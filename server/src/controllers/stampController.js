@@ -85,8 +85,9 @@ export async function getCurrentStampRequest(request, response, next) {
 
 export async function listPendingStampRequests(request, response, next) {
   try {
-    const requests = await StampRequest.find({ businessId: request.admin.businessId, status: 'pending' }).sort({ requestedAt: 1 }).limit(100).lean()
-    const customers = await Customer.find({ businessId: request.admin.businessId, _id: { $in: requests.map((item) => item.customerId) } }).select('name displayPhone').lean()
+    const businessId = new mongoose.Types.ObjectId(request.admin.businessId)
+    const requests = await StampRequest.find({ businessId, status: 'pending' }).sort({ requestedAt: 1 }).limit(100).lean()
+    const customers = await Customer.find({ businessId, _id: { $in: requests.map((item) => item.customerId) } }).select('name displayPhone').lean()
     const customerMap = new Map(customers.map((customer) => [customer._id.toString(), customer]))
     return response.json({ data: { requests: requests.map((item) => publicStampRequest(item, customerMap.get(item.customerId.toString()))) } })
   } catch (error) { return next(error) }
@@ -98,7 +99,8 @@ export async function reviewStampRequest(request, response, next) {
   const action = request.body?.action
   if (!['approve', 'reject'].includes(action)) return response.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Action must be approve or reject' } })
   try {
-    const stampRequest = await StampRequest.findOneAndUpdate({ _id: requestId, businessId: request.admin.businessId, status: 'pending' }, { $set: { status: action === 'approve' ? 'approved' : 'rejected', reviewedAt: new Date(), reviewedBy: request.admin.id, ...(action === 'reject' ? { rejectionReason: 'Rejected by business' } : {}) } }, { returnDocument: 'after' }).lean()
+    const businessId = new mongoose.Types.ObjectId(request.admin.businessId)
+    const stampRequest = await StampRequest.findOneAndUpdate({ _id: requestId, businessId, status: 'pending' }, { $set: { status: action === 'approve' ? 'approved' : 'rejected', reviewedAt: new Date(), reviewedBy: request.admin.id, ...(action === 'reject' ? { rejectionReason: 'Rejected by business' } : {}) } }, { returnDocument: 'after' }).lean()
     if (!stampRequest) return response.status(409).json({ error: { code: 'REQUEST_ALREADY_REVIEWED', message: 'This stamp request has already been reviewed' } })
     if (action === 'reject') return response.json({ data: { request: publicStampRequest(stampRequest) } })
     try {

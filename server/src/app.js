@@ -12,6 +12,7 @@ import stampsRouter from './routes/stamps.js'
 import rewardsRouter from './routes/rewards.js'
 import dashboardRouter from './routes/dashboard.js'
 import stampRequestsRouter from './routes/stampRequests.js'
+import customerRegistrationsRouter from './routes/customerRegistrations.js'
 import { errorHandler } from './middleware/errorHandler.js'
 
 const app = express()
@@ -32,7 +33,9 @@ app.use('/api/customers', customersRouter)
 app.use('/api/qr', qrRouter)
 app.use('/api/stamps', stampsRouter)
 app.use('/api/stamp-requests', stampRequestsRouter)
+app.use('/api/customer-registrations', customerRegistrationsRouter)
 app.use('/api/rewards', rewardsRouter)
+
 app.use('/api/dashboard', dashboardRouter)
 app.use('/api', settingsRouter)
 app.use(errorHandler)

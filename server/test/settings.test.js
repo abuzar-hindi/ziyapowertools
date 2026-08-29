@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test, { after, before, beforeEach } from 'node:test'
 import request from 'supertest'
 import mongoose from 'mongoose'
-import { connectDatabase, disconnectDatabase } from '../src/config/database.js'
+import { clearTestDatabase, connectDatabase, disconnectDatabase } from '../src/config/database.js'
 import { hashPassword } from '../src/config/auth.js'
 import { AdminUser, Business, LoyaltyProgram, Reward } from '../src/models/index.js'
 
@@ -17,11 +17,12 @@ let admin
 let password
 
 before(async () => {
-  await connectDatabase(process.env.MONGODB_URI)
+  await connectDatabase()
 })
 
 beforeEach(async () => {
-  await mongoose.connection.dropDatabase()
+  await connectDatabase()
+  await clearTestDatabase()
   business = await Business.create({ name: 'Brew & Bean' })
   otherBusiness = await Business.create({ name: 'Second Business' })
   password = 'correct horse battery staple'

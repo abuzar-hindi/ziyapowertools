@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test, { after, before, beforeEach } from 'node:test'
 import request from 'supertest'
 import mongoose from 'mongoose'
-import { connectDatabase, disconnectDatabase } from '../src/config/database.js'
+import { clearTestDatabase, connectDatabase, disconnectDatabase } from '../src/config/database.js'
 import { hashPassword } from '../src/config/auth.js'
 import { createCustomerSessionToken, hashToken as hashCustomerToken } from '../src/config/customerSession.js'
 import { createPermanentQr } from '../src/services/qrService.js'
@@ -19,9 +19,10 @@ let permanentToken
 let admin
 const password = 'correct horse battery staple'
 
-before(async () => connectDatabase(process.env.MONGODB_URI))
+before(async () => await connectDatabase())
 beforeEach(async () => {
-  await mongoose.connection.dropDatabase()
+  await connectDatabase()
+  await clearTestDatabase()
   business = await Business.create({ name: 'Brew & Bean', settings: { timezone: 'UTC' } })
   otherBusiness = await Business.create({ name: 'Other Business' })
   customer = await Customer.create({ businessId: business._id, name: 'Abuzar', normalizedPhone: '+15551234567', displayPhone: '+15551234567' })

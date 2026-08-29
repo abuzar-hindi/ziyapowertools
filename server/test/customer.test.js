@@ -2,11 +2,12 @@ import assert from 'node:assert/strict'
 import test, { after, before, beforeEach } from 'node:test'
 import request from 'supertest'
 import mongoose from 'mongoose'
-import { connectDatabase, disconnectDatabase } from '../src/config/database.js'
-import { AdminUser, Business, Customer, QrSession } from '../src/models/index.js'
+import { clearTestDatabase, connectDatabase, disconnectDatabase } from '../src/config/database.js'
+import { AdminUser, Business, Customer, CustomerRegistration, QrSession } from '../src/models/index.js'
 import { hashPassword } from '../src/config/auth.js'
 import { createQrToken, hashToken } from '../src/services/qrService.js'
 
+process.env.NODE_ENV = 'test'
 process.env.JWT_SECRET = 'test-secret-that-is-longer-than-32-characters'
 process.env.FRONTEND_ORIGIN = 'http://localhost:5173'
 
@@ -19,17 +20,21 @@ let qrToken
 const password = 'correct horse battery staple'
 
 before(async () => {
-  await connectDatabase(process.env.MONGODB_URI)
+  await connectDatabase()
 })
 
 beforeEach(async () => {
-  await mongoose.connection.dropDatabase()
+  await connectDatabase()
+  for (const collection of Object.values(mongoose.connection.collections)) {
+    await collection.deleteMany({})
+  }
   business = await Business.create({ name: 'Brew & Bean' })
   otherBusiness = await Business.create({ name: 'Second Business' })
   qrToken = createQrToken()
   await QrSession.create({ businessId: business._id, createdBy: new mongoose.Types.ObjectId(), tokenHash: hashToken(qrToken), expiresAt: new Date(Date.now() + 60_000) })
   admin = await AdminUser.create({ businessId: business._id, email: 'owner@example.com', passwordHash: await hashPassword(password) })
   await Customer.init()
+  await CustomerRegistration.init()
 })
 
 after(async () => {
@@ -42,7 +47,13 @@ async function adminAgent() {
   return agent
 }
 
-test('registers a customer and returns only a safe basic profile', async () => {
+test('returns registration pending for new customer and safe basic profile for approved customer', async () => {
+  const first = await request(app).post('/api/customers/identify').send({ qrToken, name: ' Abuzar ', phone: ' +1 (555) 123-4567 ' })
+  assert.equal(first.status, 202)
+  assert.equal(first.body.data.registrationPending, true)
+
+  await Customer.create({ businessId: business._id, name: 'Abuzar', normalizedPhone: '+15551234567', displayPhone: '+1 (555) 123-4567' })
+
   const response = await request(app).post('/api/customers/identify').send({ qrToken, name: ' Abuzar ', phone: ' +1 (555) 123-4567 ' })
   assert.equal(response.status, 200)
   assert.equal(response.body.data.customer.name, 'Abuzar')
@@ -53,7 +64,7 @@ test('registers a customer and returns only a safe basic profile', async () => {
   assert.equal(await Customer.countDocuments({ businessId: business._id }), 1)
 })
 
-test('returns configured public engagement links and omits missing links', async () => {
+test('returns configured public engagement links and omits missing links for approved customer', async () => {
   await Business.updateOne({ _id: business._id }, {
     $set: {
       phone: '+15551234567',
@@ -62,6 +73,8 @@ test('returns configured public engagement links and omits missing links', async
       socialLinks: { instagram: 'https://instagram.com/example', facebook: 'https://facebook.com/example' },
     },
   })
+  await Customer.create({ businessId: business._id, name: 'Abuzar', normalizedPhone: '+15551234567', displayPhone: '+15551234567' })
+
   const response = await request(app).post('/api/customers/identify').send({ qrToken, name: 'Abuzar', phone: '+15551234567' })
   assert.equal(response.status, 200)
   assert.equal(response.body.data.business.phone, '+15551234567')
@@ -74,6 +87,7 @@ test('returns configured public engagement links and omits missing links', async
 })
 
 test('returns empty public engagement fields when links are not configured', async () => {
+  await Customer.create({ businessId: business._id, name: 'Abuzar', normalizedPhone: '+15551234567', displayPhone: '+15551234567' })
   const response = await request(app).post('/api/customers/identify').send({ qrToken, name: 'Abuzar', phone: '+15551234567' })
   assert.equal(response.status, 200)
   assert.equal(response.body.data.business.phone, '')
@@ -92,15 +106,17 @@ test('rejects missing and invalid name or phone', async () => {
   }
 })
 
-test('normalizes phone numbers and returns the existing customer on repeat identification', async () => {
+test('normalizes phone numbers and returns existing approved customer on repeat identification', async () => {
+  await Customer.create({ businessId: business._id, name: 'Abuzar', normalizedPhone: '+15551234567', displayPhone: '+1 (555) 123-4567' })
   const first = await request(app).post('/api/customers/identify').send({ qrToken, name: 'Abuzar', phone: '+1 (555) 123-4567' })
   const second = await request(app).post('/api/customers/identify').send({ qrToken, name: 'Abuzar Khan', phone: '+15551234567' })
-  assert.equal(first.body.data.customer.id, second.body.data.customer.id)
+  assert.equal(first.body.data.customer.name, 'Abuzar')
+  assert.equal(second.body.data.customer.name, 'Abuzar')
   assert.equal(await Customer.countDocuments({ businessId: business._id }), 1)
-  assert.equal((await Customer.findOne({ businessId: business._id })).name, 'Abuzar Khan')
 })
 
 test('allows the same phone in another business but never accepts client business scope', async () => {
+  await Customer.create({ businessId: business._id, name: 'Local Customer', normalizedPhone: '+15550000001', displayPhone: '+15550000001' })
   const first = await request(app).post('/api/customers/identify').send({ qrToken, name: 'Local Customer', phone: '+15550000001', businessId: otherBusiness._id.toString() })
   assert.equal(first.status, 200)
   assert.equal((await Customer.findOne({ businessId: business._id })).name, 'Local Customer')
@@ -121,6 +137,6 @@ test('customer identification is rate limited', async () => {
   for (let attempt = 0; attempt < 25; attempt += 1) {
     responses.push(await request(app).post('/api/customers/identify').send({ qrToken, name: 'Abuzar', phone: `+1555123${String(attempt).padStart(4, '0')}` }))
   }
-  assert.ok(responses.some((response) => response.status === 200))
+  assert.ok(responses.some((response) => response.status === 200 || response.status === 202))
   assert.ok(responses.some((response) => response.status === 429))
 })

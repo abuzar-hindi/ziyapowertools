@@ -83,24 +83,340 @@ function App() {
 }
 
 const adminNavigation = [
-  ['overview', '▦', 'Overview'], ['customers', '♙', 'Customers'], ['loyalty', '◉', 'Loyalty'],
-  ['rewards', '◇', 'Rewards'], ['qr', '⌁', 'QR / Check-in'], ['settings', '⚙', 'Settings'],
+  ['overview', '▦', 'Overview'],
+  ['approvals', '✓', 'Approvals'],
+  ['customers', '♙', 'Customers'],
+  ['loyalty', '◉', 'Loyalty'],
+  ['rewards', '◇', 'Rewards'],
+  ['qr', '⌁', 'QR / Check-in'],
+  ['settings', '⚙', 'Settings'],
 ]
 
 function AdminWorkspace({ admin, section, setSection, onLogout }) {
   const [businessName, setBusinessName] = useState('Your business')
-  useEffect(() => { fetch('/api/business', { credentials: 'include' }).then((response) => response.json()).then((body) => setBusinessName(body.data?.business?.name || 'Your business')).catch(() => {}) }, [])
+  const [pendingCount, setPendingCount] = useState(0)
+
+  useEffect(() => {
+    fetch('/api/business', { credentials: 'include' })
+      .then((response) => response.json())
+      .then((body) => setBusinessName(body.data?.business?.name || 'Your business'))
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    fetch('/api/dashboard?period=30d', { credentials: 'include' })
+      .then((res) => res.json())
+      .then((body) => {
+        if (body.data?.metrics?.pendingApprovalsCount !== undefined) {
+          setPendingCount(body.data.metrics.pendingApprovalsCount)
+        }
+      })
+      .catch(() => {})
+  }, [section])
+
   const sectionTitle = adminNavigation.find(([key]) => key === section)?.[2] || 'Overview'
-  return <main className="admin-app"><aside className="admin-sidebar"><div className="admin-brand"><span className="admin-brand-mark">D</span><div><strong>DigiStamp</strong><small>Business workspace</small></div></div><nav aria-label="Admin navigation">{adminNavigation.map(([key, icon, label]) => <button type="button" className={section === key ? 'active' : ''} onClick={() => setSection(key)} key={key}><span>{icon}</span>{label}</button>)}</nav><div className="admin-sidebar-footer"><span className="admin-avatar">{admin.email.charAt(0).toUpperCase()}</span><div><strong>{admin.email}</strong><small>Administrator</small></div><button type="button" onClick={onLogout} aria-label="Log out">↪</button></div></aside><div className="admin-main"><header className="admin-mobile-header"><div className="admin-brand"><span className="admin-brand-mark">D</span><strong>DigiStamp</strong></div><button type="button" onClick={onLogout} aria-label="Log out">↪</button></header><div className="admin-content"><div className="admin-page-kicker">{businessName} <span>·</span> {sectionTitle}</div>{section === 'overview' && <AdminOverview businessName={businessName} onNavigate={setSection} />}{section === 'customers' && <AdminCustomers />}{section === 'loyalty' && <AdminLoyalty />}{section === 'rewards' && <AdminRewards />}{section === 'qr' && <AdminQr />}{section === 'settings' && <AdminSettings admin={admin} />}</div></div><nav className="admin-mobile-nav" aria-label="Admin navigation">{adminNavigation.map(([key, icon, label]) => <button type="button" className={section === key ? 'active' : ''} onClick={() => setSection(key)} key={key}><span>{icon}</span>{label.replace(' / Check-in', '')}</button>)}</nav></main>
+
+  return (
+    <main className="admin-app">
+      <aside className="admin-sidebar">
+        <div className="admin-brand">
+          <span className="admin-brand-mark">D</span>
+          <div>
+            <strong>DigiStamp</strong>
+            <small>Business workspace</small>
+          </div>
+        </div>
+        <nav aria-label="Admin navigation">
+          {adminNavigation.map(([key, icon, label]) => (
+            <button type="button" className={section === key ? 'active' : ''} onClick={() => setSection(key)} key={key}>
+              <span>{icon}</span>
+              {label}
+              {key === 'approvals' && pendingCount > 0 && <span className="nav-badge">{pendingCount}</span>}
+            </button>
+          ))}
+        </nav>
+        <div className="admin-sidebar-footer">
+          <span className="admin-avatar">{admin.email.charAt(0).toUpperCase()}</span>
+          <div>
+            <strong>{admin.email}</strong>
+            <small>Administrator</small>
+          </div>
+          <button type="button" onClick={onLogout} aria-label="Log out">↪</button>
+        </div>
+      </aside>
+      <div className="admin-main">
+        <header className="admin-mobile-header">
+          <div className="admin-brand">
+            <span className="admin-brand-mark">D</span>
+            <strong>DigiStamp</strong>
+          </div>
+          <button type="button" onClick={onLogout} aria-label="Log out">↪</button>
+        </header>
+        <div className="admin-content">
+          <div className="admin-page-kicker">{businessName} <span>·</span> {sectionTitle}</div>
+          {section === 'overview' && <AdminOverview businessName={businessName} onNavigate={setSection} />}
+          {section === 'approvals' && <AdminApprovals onCountChange={setPendingCount} />}
+          {section === 'customers' && <AdminCustomers />}
+          {section === 'loyalty' && <AdminLoyalty />}
+          {section === 'rewards' && <AdminRewards />}
+          {section === 'qr' && <AdminQr />}
+          {section === 'settings' && <AdminSettings admin={admin} />}
+        </div>
+      </div>
+      <nav className="admin-mobile-nav" aria-label="Admin navigation">
+        {adminNavigation.map(([key, icon, label]) => (
+          <button type="button" className={section === key ? 'active' : ''} onClick={() => setSection(key)} key={key}>
+            <span>{icon}</span>
+            {label.replace(' / Check-in', '')}
+            {key === 'approvals' && pendingCount > 0 && <span className="nav-badge">{pendingCount}</span>}
+          </button>
+        ))}
+      </nav>
+    </main>
+  )
 }
 
 function AdminOverview({ businessName, onNavigate }) {
-  const [data, setData] = useState(null); const [error, setError] = useState('')
-  useEffect(() => { fetch('/api/dashboard?period=30d', { credentials: 'include' }).then(async (response) => { const body = await response.json(); if (!response.ok) throw new Error(body.error?.message || 'Unable to load dashboard.'); setData(body.data) }).catch((requestError) => setError(requestError.message)) }, [])
+  const [data, setData] = useState(null)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    fetch('/api/dashboard?period=30d', { credentials: 'include' })
+      .then(async (response) => {
+        const body = await response.json()
+        if (!response.ok) throw new Error(body.error?.message || 'Unable to load dashboard.')
+        setData(body.data)
+      })
+      .catch((requestError) => setError(requestError.message))
+  }, [])
+
   if (error) return <AdminError message={error} />
   if (!data) return <AdminLoading label="Loading your overview..." />
-    const metrics = [['Total Customers', data.metrics.totalCustomers, '◉'], ['Visits Today', data.metrics.visitsToday, '⌁'], ['Active Customers', data.metrics.activeCustomers, '↗'], ['Inactive Customers', data.metrics.inactiveCustomers, '◌'], ['Rewards Ready', data.metrics.rewardsWaiting, '◇']]
-  return <><div className="admin-heading-row"><div><span className="admin-eyebrow">OVERVIEW</span><h1>Good morning <span className="wave">✦</span></h1><p>Here is what is happening at {businessName}.</p></div><button className="admin-primary" type="button" onClick={() => onNavigate('qr')}>＋ Generate QR</button></div><div className="admin-metric-grid">{metrics.map(([label, value, icon]) => <div className="admin-metric" key={label}><span className="metric-icon">{icon}</span><div><span>{label}</span><strong>{value}</strong></div></div>)}</div><div className="admin-dashboard-grid"><section className="admin-panel activity-panel"><PanelTitle title="Customer activity" action="View all" onClick={() => onNavigate('customers')} /><div className="activity-list">{data.recentActivity.map((item) => <div className="activity-row" key={`${item.type}-${item.id}`}><span className="activity-avatar">{item.customer?.charAt(0) || 'C'}</span><div><strong>{item.customer}</strong><span>{item.type.replace('_', ' ')}</span></div><time>{new Date(item.occurredAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</time></div>)}{!data.recentActivity.length && <AdminEmpty title="No recent activity" text="Customer check-ins will appear here." />}</div></section><section className="admin-panel insight-panel"><PanelTitle title="Customer insights" /><InsightRow icon="↗" label="Most visited" value={data.topCustomers?.[0]?.name || 'No visits yet'} action="View customers" onClick={() => onNavigate('customers')} /><InsightRow icon="◇" label="Almost reward" value={`${data.segments?.almostReward?.length || 0} customers`} action="View group" onClick={() => onNavigate('customers')} /><InsightRow icon="◌" label="Inactive customers" value={`${data.metrics.inactiveCustomers} customers`} action="View group" onClick={() => onNavigate('customers')} /><InsightRow icon="＋" label="Recent customers" value={`${data.metrics.newCustomers} this month`} action="View group" onClick={() => onNavigate('customers')} /></section></div><section className="quick-actions"><span className="admin-eyebrow">QUICK ACTIONS</span><div>{[['⌁', 'Generate QR', 'qr'], ['♙', 'View customers', 'customers'], ['◇', 'Manage rewards', 'rewards'], ['◉', 'Loyalty settings', 'loyalty']].map(([icon, label, target]) => <button type="button" onClick={() => onNavigate(target)} key={label}><span>{icon}</span>{label}<b>→</b></button>)}</div></section></>
+
+  const metrics = [
+    ['Total Customers', data.metrics.totalCustomers, '◉'],
+    ['Visits Today', data.metrics.visitsToday, '⌁'],
+    ['Active Customers', data.metrics.activeCustomers, '↗'],
+    ['Inactive Customers', data.metrics.inactiveCustomers, '◌'],
+    ['Rewards Ready', data.metrics.rewardsWaiting, '◇'],
+  ]
+
+  const pendingCount = data.metrics.pendingApprovalsCount || 0
+
+  return (
+    <>
+      <div className="admin-heading-row">
+        <div>
+          <span className="admin-eyebrow">OVERVIEW</span>
+          <h1>Good morning <span className="wave">✦</span></h1>
+          <p>Here is what is happening at {businessName}.</p>
+        </div>
+        <button className="admin-primary" type="button" onClick={() => onNavigate('qr')}>＋ Generate QR</button>
+      </div>
+
+      {pendingCount > 0 && (
+        <div className="overview-highlight-banner">
+          <div className="highlight-content">
+            <span className="highlight-badge">✦ Action required</span>
+            <strong>{pendingCount} {pendingCount === 1 ? 'approval' : 'approvals'} waiting</strong>
+            <p>{data.metrics.pendingRegistrations || 0} new customer{data.metrics.pendingRegistrations === 1 ? '' : 's'}, {data.metrics.pendingStampRequests || 0} pending stamp{data.metrics.pendingStampRequests === 1 ? '' : 's'}</p>
+          </div>
+          <button type="button" className="admin-primary" onClick={() => onNavigate('approvals')}>Review approvals →</button>
+        </div>
+      )}
+
+      <div className="admin-metric-grid">
+        {metrics.map(([label, value, icon]) => (
+          <div className="admin-metric" key={label}>
+            <span className="metric-icon">{icon}</span>
+            <div>
+              <span>{label}</span>
+              <strong>{value}</strong>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="admin-dashboard-grid">
+        <section className="admin-panel activity-panel">
+          <PanelTitle title="Customer activity" action="View all" onClick={() => onNavigate('customers')} />
+          <div className="activity-list">
+            {data.recentActivity.map((item) => (
+              <div className="activity-row" key={`${item.type}-${item.id}`}>
+                <span className="activity-avatar">{item.customer?.charAt(0) || 'C'}</span>
+                <div>
+                  <strong>{item.customer}</strong>
+                  <span>{item.type.replace('_', ' ')}</span>
+                </div>
+                <time>{new Date(item.occurredAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</time>
+              </div>
+            ))}
+            {!data.recentActivity.length && <AdminEmpty title="No recent activity" text="Customer check-ins will appear here." />}
+          </div>
+        </section>
+        <section className="admin-panel insight-panel">
+          <PanelTitle title="Customer insights" />
+          <InsightRow icon="↗" label="Most visited" value={data.topCustomers?.[0]?.name || 'No visits yet'} action="View customers" onClick={() => onNavigate('customers')} />
+          <InsightRow icon="◇" label="Almost reward" value={`${data.segments?.almostReward?.length || 0} customers`} action="View group" onClick={() => onNavigate('customers')} />
+          <InsightRow icon="◌" label="Inactive customers" value={`${data.metrics.inactiveCustomers} customers`} action="View group" onClick={() => onNavigate('customers')} />
+          <InsightRow icon="＋" label="Recent customers" value={`${data.metrics.newCustomers} this month`} action="View group" onClick={() => onNavigate('customers')} />
+        </section>
+      </div>
+
+      <section className="quick-actions">
+        <span className="admin-eyebrow">QUICK ACTIONS</span>
+        <div>
+          {[
+            ['⌁', 'Generate QR', 'qr'],
+            ['✓', 'Approvals', 'approvals'],
+            ['♙', 'View customers', 'customers'],
+            ['◇', 'Manage rewards', 'rewards'],
+          ].map(([icon, label, target]) => (
+            <button type="button" onClick={() => onNavigate(target)} key={label}>
+              <span>{icon}</span>{label}<b>→</b>
+            </button>
+          ))}
+        </div>
+      </section>
+    </>
+  )
+}
+
+function AdminApprovals({ onCountChange }) {
+  const [registrations, setRegistrations] = useState([])
+  const [stamps, setStamps] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  async function loadData() {
+    setError('')
+    try {
+      const [regRes, stampRes] = await Promise.all([
+        fetch('/api/customer-registrations/pending', { credentials: 'include' }),
+        fetch('/api/stamp-requests/pending', { credentials: 'include' }),
+      ])
+      const regBody = await regRes.json().catch(() => ({}))
+      const stampBody = await stampRes.json().catch(() => ({}))
+
+      if (!regRes.ok) throw new Error(regBody.error?.message || 'Unable to load customer registrations.')
+      if (!stampRes.ok) throw new Error(stampBody.error?.message || 'Unable to load stamp requests.')
+
+      const regList = regBody.data?.registrations || []
+      const stampList = stampBody.data?.requests || []
+      setRegistrations(regList)
+      setStamps(stampList)
+      if (onCountChange) onCountChange(regList.length + stampList.length)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { loadData() }, [])
+
+  async function reviewRegistration(id, action) {
+    try {
+      const response = await fetch(`/api/customer-registrations/${id}/review`, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      })
+      if (response.ok) {
+        setRegistrations((current) => {
+          const next = current.filter((item) => item.id !== id)
+          if (onCountChange) onCountChange(next.length + stamps.length)
+          return next
+        })
+      } else {
+        const body = await response.json().catch(() => ({}))
+        setError(body.error?.message || 'Unable to review registration.')
+      }
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  async function reviewStamp(id, action) {
+    try {
+      const response = await fetch(`/api/stamp-requests/${id}/review`, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      })
+      if (response.ok) {
+        setStamps((current) => {
+          const next = current.filter((item) => item.id !== id)
+          if (onCountChange) onCountChange(registrations.length + next.length)
+          return next
+        })
+      } else {
+        const body = await response.json().catch(() => ({}))
+        setError(body.error?.message || 'Unable to review stamp request.')
+      }
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  if (loading) return <AdminLoading label="Loading pending approvals..." />
+
+  return (
+    <div className="approvals-container">
+      <div className="admin-heading-row">
+        <div>
+          <span className="admin-eyebrow">APPROVALS</span>
+          <h1>Approvals</h1>
+          <p>Review new customer registrations and pending stamp requests.</p>
+        </div>
+      </div>
+      {error && <p className="admin-form-error mb-4">{error}</p>}
+
+      <section className="admin-panel approval-section-panel">
+        <div className="panel-title">
+          <h2>New Customer Registrations</h2>
+          <span className="status-badge ready">{registrations.length} new</span>
+        </div>
+        <div className="approval-list">
+          {registrations.map((item) => (
+            <div className="pending-row" key={item.id}>
+              <span className="customer-avatar">{item.name?.charAt(0) || '?'}</span>
+              <div>
+                <strong>{item.name}</strong>
+                <span>{item.phone} · New customer registration</span>
+              </div>
+              <time>{new Date(item.requestedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</time>
+              <button type="button" className="approve-button" onClick={() => reviewRegistration(item.id, 'approve')}>Approve</button>
+              <button type="button" className="reject-button" onClick={() => reviewRegistration(item.id, 'reject')}>Reject</button>
+            </div>
+          ))}
+          {!registrations.length && <AdminEmpty title="No new customer requests" text="Genuinely new customers scanning the QR will appear here for approval." />}
+        </div>
+      </section>
+
+      <section className="admin-panel approval-section-panel mt-6">
+        <div className="panel-title">
+          <h2>Pending Stamp Requests</h2>
+          <span className="status-badge ready">{stamps.length} pending</span>
+        </div>
+        <div className="approval-list">
+          {stamps.map((item) => (
+            <div className="pending-row" key={item.id}>
+              <span className="customer-avatar">{item.customer?.name?.charAt(0) || '?'}</span>
+              <div>
+                <strong>{item.customer?.name || 'Customer'}</strong>
+                <span>{item.customer?.phone || ''} · Stamp request</span>
+              </div>
+              <time>{new Date(item.requestedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</time>
+              <button type="button" className="approve-button" onClick={() => reviewStamp(item.id, 'approve')}>Approve</button>
+              <button type="button" className="reject-button" onClick={() => reviewStamp(item.id, 'reject')}>Reject</button>
+            </div>
+          ))}
+          {!stamps.length && <AdminEmpty title="No pending stamp requests" text="Customer stamp requests will appear here for confirmation." />}
+        </div>
+      </section>
+    </div>
+  )
 }
 
 function PendingRequests() {
@@ -140,15 +456,183 @@ function AdminLoyalty() {
   if (loading) return <AdminLoading label="Loading loyalty program..." />
   return <form className="admin-panel admin-form loyalty-manager" onSubmit={save}><div className="admin-heading-row compact"><div><span className="admin-eyebrow">LOYALTY PROGRAM</span><h1>Loyalty</h1><p>Set the milestone customers are working toward.</p></div><label className="toggle-control"><input type="checkbox" checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} /><span>{form.active ? 'Active' : 'Inactive'}</span></label></div><div className="loyalty-setting-row"><div><span className="form-label">Collect</span><strong>{form.stampsRequired} stamps</strong></div><input aria-label="Required stamps" type="number" min="1" max="100" value={form.stampsRequired} onChange={(event) => setForm({ ...form, stampsRequired: Number(event.target.value) })} /></div><div className="loyalty-preview"><div><span className="admin-eyebrow">CUSTOMER CARD PREVIEW</span><h2>{form.stampsRequired} visits to a reward</h2><p>Informational preview of the current program.</p></div><div className="preview-stamps">{Array.from({ length: Math.min(Number(form.stampsRequired) || 6, 12) }, (_, index) => <span className={index < Math.min(3, Number(form.stampsRequired) || 6) ? 'filled' : ''} key={index}>{index < 3 ? '●' : '○'}</span>)}</div></div>{error && <p role="alert" className="admin-form-error">{error}</p>}{message && <p role="status" className="admin-success">{message}</p>}<button type="submit" className="admin-primary" disabled={saving || !dirty}>{saving ? 'Saving...' : dirty ? 'Save changes' : 'Changes saved'} <span>→</span></button></form>
 }
+
 function AdminRewards() {
-  const [rewards, setRewards] = useState([]); const [form, setForm] = useState({ description: '', status: 'active', milestoneStamps: 6 }); const [savedForm, setSavedForm] = useState({ description: '', status: 'active', milestoneStamps: 6 }); const [editingId, setEditingId] = useState(null); const [loading, setLoading] = useState(true); const [saving, setSaving] = useState(false); const [message, setMessage] = useState(''); const [error, setError] = useState(''); const dirty = Boolean(form.description.trim()) && JSON.stringify(form) !== JSON.stringify(savedForm)
-  useEffect(() => { fetch('/api/rewards/manage', { credentials: 'include' }).then((response) => response.json()).then((body) => setRewards(body.data?.rewards || [])).catch(() => setError('Unable to load reward settings.')).finally(() => setLoading(false)) }, [])
-  function editReward(reward) { const nextForm = { description: reward.description, status: reward.status, milestoneStamps: reward.milestoneStamps || 6 }; setEditingId(reward._id); setForm(nextForm); setSavedForm(nextForm); setMessage('') }
-  async function save(event) { event.preventDefault(); if (!dirty) return; setSaving(true); setError(''); setMessage(''); try { const path = editingId ? `/api/rewards/manage/${editingId}` : '/api/rewards/manage'; const response = await fetch(path, { method: editingId ? 'PATCH' : 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...form, milestoneStamps: Number(form.milestoneStamps) }) }); const body = await response.json(); if (!response.ok) throw new Error(body.error?.message || 'Unable to save reward.'); setRewards((current) => editingId ? current.map((reward) => reward._id === editingId ? body.data.reward : reward) : [...current, body.data.reward].sort((left, right) => left.milestoneStamps - right.milestoneStamps)); setForm({ description: '', status: 'active', milestoneStamps: 6 }); setSavedForm({ description: '', status: 'active', milestoneStamps: 6 }); setEditingId(null); setMessage('Changes saved') } catch (saveError) { setError(saveError.message) } finally { setSaving(false) } }
+  const [rewards, setRewards] = useState([])
+  const [form, setForm] = useState({ description: '', status: 'active', milestoneStamps: 6 })
+  const [editingId, setEditingId] = useState(null)
+  const [showForm, setShowForm] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
+
+  async function loadRewards() {
+    try {
+      const response = await fetch('/api/rewards/manage', { credentials: 'include' })
+      const body = await response.json()
+      setRewards(body.data?.rewards || [])
+    } catch {
+      setError('Unable to load reward settings.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { loadRewards() }, [])
+
+  function startAdd() {
+    setEditingId(null)
+    setForm({ description: '', status: 'active', milestoneStamps: 6 })
+    setShowForm(true)
+    setMessage('')
+    setError('')
+  }
+
+  function startEdit(reward) {
+    setEditingId(reward._id)
+    setForm({ description: reward.description, status: reward.status, milestoneStamps: reward.milestoneStamps || 6 })
+    setShowForm(true)
+    setMessage('')
+    setError('')
+  }
+
+  async function toggleStatus(reward) {
+    const nextStatus = reward.status === 'active' ? 'inactive' : 'active'
+    try {
+      const response = await fetch(`/api/rewards/manage/${reward._id}`, {
+        method: 'PATCH', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description: reward.description, status: nextStatus, milestoneStamps: reward.milestoneStamps || 6 }),
+      })
+      const body = await response.json()
+      if (!response.ok) throw new Error(body.error?.message || 'Unable to update status.')
+      setRewards((current) => current.map((r) => (r._id === reward._id ? body.data.reward : r)))
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  async function saveReward(event) {
+    event.preventDefault()
+    if (!form.description.trim()) return
+    setSaving(true)
+    setError('')
+    setMessage('')
+    try {
+      const path = editingId ? `/api/rewards/manage/${editingId}` : '/api/rewards/manage'
+      const response = await fetch(path, {
+        method: editingId ? 'PATCH' : 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...form, milestoneStamps: Number(form.milestoneStamps) }),
+      })
+      const body = await response.json()
+      if (!response.ok) throw new Error(body.error?.message || 'Unable to save reward.')
+      
+      setRewards((current) => editingId ? current.map((r) => r._id === editingId ? body.data.reward : r) : [...current, body.data.reward].sort((a,b) => a.milestoneStamps - b.milestoneStamps))
+      setShowForm(false)
+      setMessage('Reward saved successfully.')
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   if (loading) return <AdminLoading label="Loading rewards..." />
-  return <section className="rewards-manager"><div className="admin-heading-row"><div><span className="admin-eyebrow">REWARD MANAGEMENT</span><h1>Rewards</h1><p>Create milestone rewards that keep customers coming back.</p></div><span className="future-note">{rewards.length} milestone{rewards.length === 1 ? '' : 's'} configured</span></div><div className="reward-list">{rewards.map((reward) => <div className="reward-summary admin-panel" key={reward._id}><span className="reward-icon">◇</span><div><strong>{reward.description}</strong><span>Unlock at {reward.milestoneStamps || 6} stamps</span></div><span className={`status-badge ${reward.status === 'active' ? 'ready' : ''}`}>{reward.status === 'active' ? 'Active' : 'Inactive'}</span><button type="button" onClick={() => editReward(reward)}>Edit</button></div>)}{!rewards.length && <AdminEmpty title="No rewards configured yet" text="Create your first reward below." />}</div><form className="reward-editor admin-panel" onSubmit={save}><div className="reward-card-top"><span className="reward-icon">＋</span><div><span className="admin-eyebrow">{editingId ? 'EDIT REWARD' : 'ADD REWARD'}</span><h2>{editingId ? 'Update milestone reward' : 'Create a milestone reward'}</h2></div></div><div className="reward-details"><label>Reward name or description<textarea aria-label="Reward description" required maxLength="240" rows="2" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label><label>Unlock at<input aria-label="Reward milestone" required type="number" min="1" max="100" value={form.milestoneStamps} onChange={(event) => setForm({ ...form, milestoneStamps: event.target.value })} /></label><label className="toggle-control"><input type="checkbox" checked={form.status === 'active'} onChange={(event) => setForm({ ...form, status: event.target.checked ? 'active' : 'inactive' })} /><span>{form.status === 'active' ? 'Enabled' : 'Disabled'}</span></label></div>{error && <p role="alert" className="admin-form-error">{error}</p>}{message && <p role="status" className="admin-success">{message}</p>}<div className="reward-actions"><button type="submit" className="admin-primary" disabled={saving || !dirty}>{saving ? 'Saving...' : dirty ? 'Save changes' : 'Changes saved'} <span>→</span></button></div></form></section>
+
+  return (
+    <section className="rewards-workspace">
+      <div className="admin-heading-row">
+        <div>
+          <span className="admin-eyebrow">REWARD MANAGEMENT</span>
+          <h1>Rewards</h1>
+          <p>Create and manage milestone rewards that keep customers coming back.</p>
+        </div>
+        <button type="button" className="admin-primary" onClick={startAdd}>
+          ＋ Add Reward
+        </button>
+      </div>
+
+      {error && <p className="admin-form-error mb-4">{error}</p>}
+      {message && <p className="admin-success mb-4">{message}</p>}
+
+      <div className="rewards-grid">
+        {rewards.map((reward) => (
+          <div className="reward-card-panel admin-panel" key={reward._id}>
+            <div className="reward-card-header">
+              <span className="reward-icon-badge">◇</span>
+              <span className={`status-badge ${reward.status === 'active' ? 'ready' : ''}`}>
+                {reward.status === 'active' ? 'Active' : 'Inactive'}
+              </span>
+            </div>
+            <div className="reward-card-body">
+              <strong className="reward-title">{reward.description}</strong>
+              <p className="reward-milestone">Unlock at <b>{reward.milestoneStamps || 6}</b> stamps</p>
+            </div>
+            <div className="reward-card-actions">
+              <button type="button" className="admin-secondary" onClick={() => toggleStatus(reward)}>
+                {reward.status === 'active' ? 'Disable' : 'Enable'}
+              </button>
+              <button type="button" className="admin-primary" onClick={() => startEdit(reward)}>
+                Edit
+              </button>
+            </div>
+          </div>
+        ))}
+        {!rewards.length && (
+          <AdminEmpty title="No rewards configured" text="Click '+ Add Reward' above to create your first milestone reward." />
+        )}
+      </div>
+
+      {showForm && (
+        <form className="reward-editor-modal admin-panel mt-6" onSubmit={saveReward}>
+          <div className="panel-title">
+            <h2>{editingId ? 'Edit Reward' : 'Add New Reward'}</h2>
+            <button type="button" onClick={() => setShowForm(false)}>✕ Close</button>
+          </div>
+          <div className="form-group mt-4">
+            <label className="form-label">Reward Name / Description</label>
+            <input
+              type="text" required maxLength="240"
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              placeholder="e.g. Free Artisanal Coffee or 20% Off Pastry"
+              className="admin-input"
+            />
+          </div>
+          <div className="form-row mt-4">
+            <label className="form-label">Required Stamps</label>
+            <input
+              type="number" min="1" max="100" required
+              value={form.milestoneStamps}
+              onChange={(e) => setForm({ ...form, milestoneStamps: e.target.value })}
+              className="admin-input"
+            />
+          </div>
+          <div className="form-row mt-4">
+            <label className="toggle-control">
+              <input
+                type="checkbox"
+                checked={form.status === 'active'}
+                onChange={(e) => setForm({ ...form, status: e.target.checked ? 'active' : 'inactive' })}
+              />
+              <span>Active</span>
+            </label>
+          </div>
+          <div className="modal-actions mt-6">
+            <button type="button" className="admin-secondary" onClick={() => setShowForm(false)}>Cancel</button>
+            <button type="submit" className="admin-primary" disabled={saving}>{saving ? 'Saving...' : 'Save Reward'}</button>
+          </div>
+        </form>
+      )}
+    </section>
+  )
 }
+
 function AdminQr() { return <PermanentQrPanel /> }
+
 function AdminSettings({ section = 'business', admin }) { return <>{section === 'business' && <ShopSettings /> }<SettingsPanel section={section} admin={admin} /></> }
 
 function PermanentQrPanel() {
@@ -172,6 +656,7 @@ function CustomerExperience() {
   const [phone, setPhone] = useState('')
   const [business, setBusiness] = useState(null)
   const [identified, setIdentified] = useState(false)
+  const [registrationPending, setRegistrationPending] = useState(false)
   const [progress, setProgress] = useState(null)
   const [rewards, setRewards] = useState([])
   const [activity, setActivity] = useState({ visits: [], rewards: [] })
@@ -201,7 +686,7 @@ function CustomerExperience() {
   useEffect(() => {
     if (!qrToken) return
     fetch('/api/qr/sessions/validate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: qrToken }) })
-      .then(async (response) => { const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error('This QR code has expired. Please ask the business for a new one.'); setBusiness(body.data.business) })
+      .then(async (response) => { const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error('This QR code has expired. Please ask the business for a new one.'); setBusiness(body.data.business); if (body.data.business?.featuredPhotoUrl) setFeaturedPhoto(body.data.business.featuredPhotoUrl) })
       .catch((requestError) => setError(requestError.message)).finally(() => setLoading(false))
   }, [qrToken])
 
@@ -216,7 +701,7 @@ function CustomerExperience() {
       if (!profileResponse.ok) return
       const profile = await profileResponse.json()
       setName(profile.data.customer.name); setPhone(profile.data.customer.phone); setBusiness(profile.data.business); setIdentified(true)
-      if (profile.data.business.featuredPhotoUrl) fetch(profile.data.business.featuredPhotoUrl, { credentials: 'include' }).then((photoResponse) => { if (photoResponse.ok) setFeaturedPhoto(profile.data.business.featuredPhotoUrl) }).catch(() => {})
+      if (profile.data.business?.featuredPhotoUrl) setFeaturedPhoto(profile.data.business.featuredPhotoUrl)
       if (rewardsResponse.ok) setRewards((await rewardsResponse.json()).data.rewards || [])
       if (historyResponse.ok) setActivity((await historyResponse.json()).data)
       if (requestResponse.ok) setStampRequest((await requestResponse.json()).data.request)
@@ -238,14 +723,26 @@ function CustomerExperience() {
   }
 
   async function identify(event) {
-    event.preventDefault(); setError(''); setMessage('')
+    if (event && event.preventDefault) event.preventDefault()
+    setError(''); setMessage('')
     if (!online) return setError('You are offline. Reconnect before continuing.')
     if (!name.trim() || !phone.trim()) return setError('Enter your name and phone number.')
     setSaving(true)
     try {
       const response = await fetch('/api/customers/identify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ qrToken, name, phone }) })
-      const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(body.error?.message || 'Unable to save your details.')
-      setName(body.data.customer.name); setPhone(body.data.customer.phone); setBusiness(body.data.business); setIdentified(true); setMessage('Your loyalty card is ready.'); if (body.data.business.featuredPhotoUrl) fetch(body.data.business.featuredPhotoUrl, { credentials: 'include' }).then((photoResponse) => { if (photoResponse.ok) setFeaturedPhoto(body.data.business.featuredPhotoUrl) }).catch(() => {}); await refreshData()
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(body.error?.message || 'Unable to save your details.')
+
+      if (body.data?.registrationPending) {
+        setRegistrationPending(true)
+        if (body.data.business) setBusiness(body.data.business)
+        return
+      }
+
+      setRegistrationPending(false)
+      setName(body.data.customer.name); setPhone(body.data.customer.phone); setBusiness(body.data.business); setIdentified(true); setMessage('Your loyalty card is ready.')
+      if (body.data.business?.featuredPhotoUrl) setFeaturedPhoto(body.data.business.featuredPhotoUrl)
+      await refreshData()
     } catch (requestError) { setError(requestError.message.includes('Failed to fetch') ? 'Unable to reach the server.' : requestError.message) } finally { setSaving(false) }
   }
 
@@ -272,16 +769,27 @@ function CustomerExperience() {
   if (loading) return <main className="customer-app customer-centered"><div className="loading-orb">✦</div><p>Preparing your loyalty card...</p></main>
   if (error && !business) return <main className="customer-app customer-centered"><div className="error-card"><span className="brand-mark">✦</span><p role="alert">{error}</p></div></main>
   if (!business) return null
+  if (registrationPending) return <main className="customer-app customer-centered"><div className="identity-card"><div className="brand-lockup"><span className="brand-mark">✦</span><span>DigiStamp</span></div><span className="eyebrow">{business.name}</span><h1>Registration Pending</h1><p>Your registration is waiting for approval.</p><button type="button" className="primary-action" onClick={() => identify(null)} disabled={saving}>{saving ? 'Checking status...' : 'Check Approval Status'}<b>↻</b></button></div></main>
   if (!identified) return <main className="customer-app customer-centered"><div className="identity-card"><div className="brand-lockup"><span className="brand-mark">✦</span><span>DigiStamp</span></div><span className="eyebrow">{business.name}</span><h1>Your visits, your rewards.</h1><p>Tell us who you are to start your digital loyalty card.</p><form onSubmit={identify}><label>Name<input required maxLength="120" value={name} onChange={(event) => setName(event.target.value)} /></label><label>Phone number<input required type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} /></label>{error && <p role="alert" className="form-error">{error}</p>}<button type="submit" className="primary-action" disabled={saving || !online}>{saving ? 'Setting up your card...' : 'Start collecting'}<b>→</b></button></form></div></main>
+
 
   const required = progress?.required || 6
   const current = progress?.current || 0
   const unlocked = rewards.filter((reward) => reward.status === 'unlocked')
   const locked = rewards.filter((reward) => reward.status !== 'unlocked' && reward.status !== 'redeemed')
   const redeemed = rewards.filter((reward) => reward.status === 'redeemed')
-  const visualSlotCount = Math.min(required, 12)
-  const stampSlots = Array.from({ length: visualSlotCount }, (_, index) => index)
+  const stampSlots = Array.from({ length: required }, (_, index) => index)
   const stampActionLocked = stampRequest?.status === 'pending' || stampRequest?.status === 'approved' || current >= required
+
+  const milestoneSet = new Set(
+    rewards
+      .map((r) => r.milestoneStamps || r.stampsRequired)
+      .filter(Boolean)
+  )
+  if (milestoneSet.size === 0) {
+    milestoneSet.add(required)
+  }
+
   const linkItems = [
     ['instagram', '◎', business.socialLinks?.instagram], ['facebook', 'f', business.socialLinks?.facebook],
     ['whatsapp', '◌', business.whatsappNumber ? `https://wa.me/${business.whatsappNumber.replace(/\D/g, '')}` : ''],
@@ -289,22 +797,74 @@ function CustomerExperience() {
   ]
   const greeting = name ? `Hey ${name.split(' ')[0]}!` : 'Welcome back!'
 
+  const timelineEvents = [
+    ...(activity.visits || []).map((visit) => ({
+      id: visit._id || `visit-${visit.createdAt}`,
+      date: new Date(visit.createdAt || visit.visitedAt || 0),
+      title: 'Stamp collected',
+      type: 'stamp',
+      icon: '✓',
+    })),
+    ...(activity.rewards || [])
+      .filter((r) => r.status === 'unlocked' || r.status === 'redeemed')
+      .map((reward) => ({
+        id: reward._id || `reward-${reward.updatedAt}`,
+        date: new Date(reward.redeemedAt || reward.unlockedAt || reward.updatedAt || 0),
+        title: reward.status === 'redeemed'
+          ? `Reward redeemed · ${reward.description || 'Loyalty Reward'}`
+          : `Reward unlocked · ${reward.description || 'Loyalty Reward'}`,
+        type: reward.status,
+        icon: reward.status === 'redeemed' ? '🎁' : '🎉',
+      })),
+  ].sort((a, b) => b.date - a.date)
+
   return <main className="customer-app">
     <div className="customer-shell">
       <header className="customer-topbar"><div className="brand-lockup"><span className="brand-mark">✦</span><span>DigiStamp</span></div><span className={`connection-dot ${online ? 'is-online' : ''}`} title={online ? 'Connected' : 'Offline'} /></header>
       {!online && <div className="offline-banner" role="status">Offline mode · your card is safe, but new stamps need a connection.</div>}
       {screen === 'home' && <section className="customer-screen home-screen">
-        <div className="business-status"><strong className={business.shopStatus?.status === 'open' ? 'open' : 'closed'}>{business.shopStatus?.status === 'open' ? '● Open now' : '● Closed'}</strong><span>{business.shopStatus?.detail || 'Hours unavailable'}</span></div>
+        <div className="business-header">
+          <p className="eyebrow">{business.name}</p>
+          <div className="business-status"><strong className={business.shopStatus?.status === 'open' ? 'open' : 'closed'}>{business.shopStatus?.status === 'open' ? '● Open now' : '● Closed'}</strong><span>{business.shopStatus?.detail || 'Hours unavailable'}</span></div>
+        </div>
         {featuredPhoto && <img className="featured-business-photo" src={featuredPhoto} alt={`${business.name} featured`} />}
-        <div className="welcome-copy"><p className="eyebrow">{business.name}</p><h1>{greeting}</h1><p>{stampRequest?.status === 'pending' ? 'Your stamp request is waiting for the team.' : stampRequest?.status === 'rejected' ? 'Your last request was declined. You can try again today.' : stampRequest?.status === 'approved' ? 'Today\'s stamp is confirmed.' : current >= required ? 'Your reward is ready to enjoy.' : current ? `${required - current} more ${required - current === 1 ? 'visit' : 'visits'} to unlock your reward.` : 'Your next little treat starts here.'}</p></div>
-        <div className="loyalty-card"><div className="card-glow" /><div className="card-header"><span>VISIT CLUB</span><span>{current}/{required} visits</span></div><div className="stamp-grid">{stampSlots.map((index) => <div className={`stamp-slot ${index < Math.min(current, visualSlotCount) ? 'collected' : ''} ${index === visualSlotCount - 1 ? 'reward-slot' : ''}`} key={index}><span>{index < Math.min(current, visualSlotCount) ? '✓' : index === visualSlotCount - 1 ? '🎁' : '＋'}</span></div>)}</div><div className="card-footer"><span>{required > 12 ? `${current} / ${required} visits` : current >= required ? 'Reward unlocked' : 'Keep the good visits coming'}</span><span>✦</span></div></div>
+        <div className="welcome-copy"><h1>{greeting}</h1><p>{stampRequest?.status === 'pending' ? 'Your stamp request is waiting for the team.' : stampRequest?.status === 'rejected' ? 'Your last request was declined. You can try again today.' : stampRequest?.status === 'approved' ? 'Today\'s stamp is confirmed.' : current >= required ? 'Your reward is ready to enjoy.' : current ? `${required - current} more ${required - current === 1 ? 'visit' : 'visits'} to unlock your reward.` : 'Your next little treat starts here.'}</p></div>
+        <div className="loyalty-card">
+          <div className="card-glow" />
+          <div className="card-header"><span>VISIT CLUB</span><span>{current}/{required} visits</span></div>
+          <div className="stamp-grid-container">
+            <div className="stamp-grid">
+              {stampSlots.map((index) => {
+                const pos = index + 1
+                const isCollected = pos <= current
+                const isMilestone = milestoneSet.has(pos) || pos === required
+                let slotClass = `stamp-slot`
+                if (isCollected) slotClass += ` collected`
+                if (isMilestone) {
+                  slotClass += ` reward-slot`
+                  if (!isCollected) slotClass += ` mystery`
+                }
+
+                return (
+                  <div className={slotClass} key={index}>
+                    <span>
+                      {isMilestone ? '🎁' : isCollected ? '✓' : '＋'}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+            {required > 9 && <div className="stamp-scroll-hint"><span>scroll for more stamps</span> ↓</div>}
+          </div>
+          <div className="card-footer"><span>{current >= required ? 'Reward unlocked' : `${current} / ${required} visits`}</span><span>✦</span></div>
+        </div>
         <button type="button" className="primary-action" onClick={() => { if (stampRequest?.status === 'pending') setMessage('Today\'s stamp is already requested.'); else if (stampRequest?.status === 'approved') setMessage("Today's stamp is already collected. You can collect another stamp tomorrow."); else collectStamp() }} disabled={stamping || !online || stampActionLocked}><span>{stamping ? 'Requesting...' : stampRequest?.status === 'pending' ? 'Stamp pending' : stampRequest?.status === 'approved' ? 'Stamp collected today' : current >= required ? 'Reward ready' : 'Collect Today\'s Stamp'}</span><b>→</b></button>
         {message && <p role="status" className="celebration">{message}</p>}
         <div className="next-reward"><div className="gift-icon">🎁</div><div><span className="eyebrow">{unlocked.length ? 'Your reward' : 'Next reward'}</span><strong>{unlocked.length ? unlocked[0].description : `${Math.max(required - current, 0)} more to go`}</strong></div><span className="chevron">›</span></div>
         <ContactRow items={linkItems} /><div className="business-footer">{business.address?.line1 && <span>{business.address.line1}{business.address.city ? `, ${business.address.city}` : ''}</span>}{business.phone && <span>{business.phone}</span>}<span>{business.shopStatus?.timezone ? `Hours · ${business.shopStatus.timezone}` : 'Business hours available above'}</span></div>
       </section>}
-      {screen === 'rewards' && <section className="customer-screen"><ScreenHeading eyebrow="YOUR PERKS" title="Rewards" subtitle="Little moments worth coming back for." /><div className="progress-strip"><div><span>Current progress</span><strong>{current} <small>/ {required} visits</small></strong></div><div className="mini-progress">{stampSlots.map((index) => <i className={index < current ? 'filled' : ''} key={index} />)}</div></div><div className="section-label">Your rewards</div>{unlocked.map((reward) => <RewardCard key={reward._id} reward={reward} onRedeem={redeem} />)}{locked.length === 0 && unlocked.length === 0 && <div className="mystery-card"><span>🎁</span><div><strong>Something lovely is waiting</strong><p>Keep collecting to reveal it.</p></div><b>?</b></div>}{locked.map((reward) => <RewardCard key={reward._id} reward={reward} />)}{redeemed.map((reward) => <RewardCard key={reward._id} reward={reward} />)}</section>}
-      {screen === 'activity' && <section className="customer-screen"><ScreenHeading eyebrow="YOUR JOURNEY" title="Activity" subtitle="A little history of your visits." /><div className="cycle-summary"><span className="eyebrow">CURRENT CYCLE</span><strong>{current} / {required} stamps</strong><div className="mini-progress">{stampSlots.map((index) => <i className={index < Math.min(current, visualSlotCount) ? 'filled' : ''} key={index} />)}</div></div><div className="section-label">Previous cycles</div><div className="timeline">{activity.rewards.filter((reward) => reward.status === 'redeemed').map((reward) => <div className="timeline-item cycle-item" key={reward._id}><div className="timeline-dot reward-dot">✓</div><div><span>Cycle {reward.cycleNumber || 'complete'}</span><strong>{required} / {required} · Reward redeemed</strong></div></div>)}{activity.rewards.filter((reward) => reward.status === 'unlocked').map((reward) => <div className="timeline-item cycle-item" key={reward._id}><div className="timeline-dot reward-dot">◇</div><div><span>Cycle {reward.cycleNumber || 'complete'}</span><strong>{required} / {required} · Reward unlocked</strong></div></div>)}{!activity.rewards.length && !activity.visits.length && <div className="empty-state"><span>✦</span><p>Your first visit will appear here.</p></div>}</div></section>}
+      {screen === 'rewards' && <section className="customer-screen"><ScreenHeading eyebrow="YOUR PERKS" title="Rewards" subtitle="Little moments worth coming back for." /><div className="progress-strip"><div><span>Current progress</span><strong>{current} <small>/ {required} visits</small></strong></div><div className="mini-progress">{stampSlots.slice(0, 12).map((index) => <i className={index < current ? 'filled' : ''} key={index} />)}</div></div><div className="section-label">Your rewards</div>{unlocked.map((reward) => <RewardCard key={reward._id} reward={reward} onRedeem={redeem} />)}{locked.length === 0 && unlocked.length === 0 && <div className="mystery-card"><span>🎁</span><div><strong>Something lovely is waiting</strong><p>Keep collecting to reveal it.</p></div><b>?</b></div>}{locked.map((reward) => <RewardCard key={reward._id} reward={reward} />)}{redeemed.map((reward) => <RewardCard key={reward._id} reward={reward} />)}</section>}
+      {screen === 'activity' && <section className="customer-screen"><ScreenHeading eyebrow="YOUR JOURNEY" title="Activity" subtitle="A timeline of your visits and rewards." /><div className="cycle-summary"><span className="eyebrow">CURRENT CYCLE</span><strong>{current} / {required} stamps</strong><div className="mini-progress">{stampSlots.slice(0, 12).map((index) => <i className={index < current ? 'filled' : ''} key={index} />)}</div></div><div className="section-label">Timeline History</div><div className="timeline-container">{timelineEvents.length > 0 ? <div className="timeline-list">{timelineEvents.map((evt) => <div className="timeline-row" key={evt.id}><div className="timeline-marker-col"><div className={`timeline-dot ${evt.type}`}>{evt.icon}</div><div className="timeline-line" /></div><div className="timeline-body"><div className="timeline-meta"><span className="timeline-date">{evt.date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span><span className="timeline-time">{evt.date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</span></div><strong className="timeline-title">{evt.title}</strong></div></div>)}</div> : <div className="empty-state"><span>✦</span><p>Your first visit will appear here.</p></div>}</div></section>}
       {screen === 'profile' && <section className="customer-screen"><ScreenHeading eyebrow="YOUR DETAILS" title="Profile" subtitle="Your card, your local favorites." /><div className="profile-card"><div className="avatar">{name ? name.charAt(0).toUpperCase() : 'D'}</div><div><strong>{name || 'Your name'}</strong><span>{phone || 'Your phone number'}</span></div></div><div className="business-block"><span className="eyebrow">BUSINESS</span><h2>{business.name}</h2>{business.address?.line1 && <p>{business.address.line1}{business.address.city ? `, ${business.address.city}` : ''}</p>}{business.phone && <p>{business.phone}</p>}{business.shopStatus?.detail && <p>{business.shopStatus.detail}</p>}</div><ContactRow items={linkItems} large /><div className="powered-by">Powered by DigiStamp</div></section>}
       {rewardReveal && <div className="reward-reveal" role="dialog" aria-modal="true"><div className="reward-reveal-card"><button type="button" className="reveal-close" aria-label="Close reward reveal" onClick={() => setRewardReveal(null)}>×</button><span className="reveal-gift">🎁</span><span className="eyebrow">REWARD UNLOCKED</span><h2>Your reward is unlocked!</h2><p>{rewardReveal.description}</p><button type="button" className="primary-action" onClick={() => { setRewardReveal(null); setScreen('rewards') }}>View reward <b>→</b></button></div></div>}
       {screen === 'home' && message && unlocked[0] && <div className="reward-toast">🎉 <span><strong>You unlocked your reward!</strong><small>{unlocked[0].description}</small></span></div>}
@@ -394,6 +954,12 @@ export function CustomerRegistration() {
       })
       const body = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(body.error?.message || 'Unable to save your details.')
+
+      if (body.data?.registrationPending) {
+        setMessage('Your registration is waiting for approval.')
+        return
+      }
+
       setMessage(`Thanks, ${body.data.customer.name}. Your profile is ready.`)
       setLinks(body.data.business)
       await refreshProgress()

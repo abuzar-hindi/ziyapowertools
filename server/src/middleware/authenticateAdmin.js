@@ -17,6 +17,13 @@ export async function authenticateAdmin(request, response, next) {
       return response.status(401).json({ error: { code: 'UNAUTHENTICATED', message: 'Authentication required' } })
     }
 
+    if (admin.authMetadata?.passwordResetAt && payload.iat) {
+      const resetTimestamp = Math.floor(new Date(admin.authMetadata.passwordResetAt).getTime() / 1000)
+      if (payload.iat < resetTimestamp) {
+        return response.status(401).json({ error: { code: 'UNAUTHENTICATED', message: 'Authentication required' } })
+      }
+    }
+
     request.admin = {
       id: admin._id.toString(),
       businessId: admin.businessId.toString(),

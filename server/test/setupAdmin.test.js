@@ -3,7 +3,7 @@ import { PassThrough } from 'node:stream'
 import test, { after, before, beforeEach } from 'node:test'
 import mongoose from 'mongoose'
 import { comparePassword } from '../src/config/auth.js'
-import { connectDatabase, disconnectDatabase } from '../src/config/database.js'
+import { clearTestDatabase, connectDatabase, disconnectDatabase } from '../src/config/database.js'
 import { AdminUser, Business } from '../src/models/index.js'
 import { createInitialAdmin, runSetup, validateSetupInput } from '../src/cli/setupAdmin.js'
 
@@ -11,11 +11,14 @@ const databaseUri = process.env.MONGODB_URI
 const databaseTestsEnabled = Boolean(databaseUri)
 
 before(async () => {
-  if (databaseTestsEnabled) await connectDatabase(databaseUri)
+  if (databaseTestsEnabled) await connectDatabase()
 })
 
 beforeEach(async () => {
-  if (databaseTestsEnabled) await mongoose.connection.dropDatabase()
+  if (databaseTestsEnabled) {
+    await connectDatabase()
+    await clearTestDatabase()
+  }
 })
 
 after(async () => {

@@ -1,4 +1,5 @@
 import mongoose from 'mongoose'
+import { v2 as cloudinary } from 'cloudinary'
 import { Business, FeaturedPhoto, LoyaltyProgram, Reward } from '../models/index.js'
 import { publicShopStatus } from '../services/shopStatusService.js'
 import { imageSize } from 'image-size'
@@ -102,15 +103,20 @@ export async function updateShop(request, response, next) {
 
 export async function getFeaturedPhoto(request, response, next) {
   try {
-    const photo = await FeaturedPhoto.findOne({ businessId: request.businessId }).select('contentType width height updatedAt').lean()
-    return response.json({ data: { photo: photo ? { url: `/api/business/featured-photo/image`, contentType: photo.contentType, width: photo.width, height: photo.height, updatedAt: photo.updatedAt } : null } })
+    const photo = await FeaturedPhoto.findOne({ businessId: request.businessId }).select('cloudinaryUrl contentType width height updatedAt').lean()
+    return response.json({ data: { photo: photo ? { url: photo.cloudinaryUrl || `/api/business/featured-photo/image`, contentType: photo.contentType, width: photo.width, height: photo.height, updatedAt: photo.updatedAt } : null } })
   } catch (error) { return next(error) }
 }
 
 export async function getFeaturedPhotoImage(request, response, next) {
   try {
-    const photo = await FeaturedPhoto.findOne({ businessId: request.businessId }).select('+content contentType').lean()
+    const businessId = request.businessId || request.customer?.businessId
+    if (!businessId) return response.status(401).end()
+    const photo = await FeaturedPhoto.findOne({ businessId }).select('+content contentType cloudinaryUrl').lean()
     if (!photo) return response.status(404).end()
+    if (photo.cloudinaryUrl) {
+      return response.redirect(302, photo.cloudinaryUrl)
+    }
     response.type(photo.contentType).set('Cache-Control', 'private, max-age=300').send(photo.content)
   } catch (error) { return next(error) }
 }
@@ -122,16 +128,59 @@ export async function uploadFeaturedPhoto(request, response, next) {
     let dimensions
     try { dimensions = imageSize(request.file.buffer) } catch { return sendValidationError(response, 'The uploaded file is not a valid image') }
     if (dimensions.width < dimensions.height || dimensions.width / dimensions.height < 1.2) return sendValidationError(response, 'Featured photo must be landscape-oriented')
-    const existing = await FeaturedPhoto.exists({ businessId: request.businessId })
+    const existing = await FeaturedPhoto.findOne({ businessId: request.businessId }).lean()
     if (existing && request.body?.replace !== 'true') return response.status(409).json({ error: { code: 'FEATURED_PHOTO_EXISTS', message: 'A featured photo already exists. Replace it?' } })
-    const photo = await FeaturedPhoto.findOneAndUpdate({ businessId: request.businessId }, { $set: { businessId: request.businessId, content: request.file.buffer, contentType: request.file.mimetype, byteSize: request.file.size, width: dimensions.width, height: dimensions.height } }, { upsert: true, returnDocument: 'after', runValidators: true }).lean()
-    return response.json({ data: { photo: { url: '/api/business/featured-photo/image', contentType: photo.contentType, width: photo.width, height: photo.height, updatedAt: photo.updatedAt } } })
+
+    let cloudinaryUrl = ''
+    let publicId = ''
+    if (process.env.cloud_name && process.env.cloud_api_key && process.env.cloud_api_secret) {
+      cloudinary.config({
+        cloud_name: process.env.cloud_name,
+        api_key: process.env.cloud_api_key,
+        api_secret: process.env.cloud_api_secret,
+        secure: true,
+      })
+      if (existing?.publicId) {
+        await cloudinary.uploader.destroy(existing.publicId).catch(() => {})
+      }
+      const cloudResult = await new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          { folder: 'loyalty_featured_photos', resource_type: 'image' },
+          (err, result) => (err ? reject(err) : resolve(result)),
+        )
+        stream.end(request.file.buffer)
+      })
+      cloudinaryUrl = cloudResult.secure_url
+      publicId = cloudResult.public_id
+    }
+
+    const photo = await FeaturedPhoto.findOneAndUpdate(
+      { businessId: request.businessId },
+      { $set: { businessId: request.businessId, cloudinaryUrl, publicId, content: request.file.buffer, contentType: request.file.mimetype, byteSize: request.file.size, width: dimensions.width, height: dimensions.height } },
+      { upsert: true, returnDocument: 'after', runValidators: true },
+    ).lean()
+    const returnedUrl = photo.cloudinaryUrl || '/api/business/featured-photo/image'
+    return response.json({ data: { photo: { url: returnedUrl, contentType: photo.contentType, width: photo.width, height: photo.height, updatedAt: photo.updatedAt } } })
   } catch (error) { return next(error) }
 }
 
 export async function removeFeaturedPhoto(request, response, next) {
-  try { await FeaturedPhoto.deleteOne({ businessId: request.businessId }); return response.json({ data: { removed: true } }) } catch (error) { return next(error) }
+  try {
+    const existing = await FeaturedPhoto.findOne({ businessId: request.businessId }).lean()
+    if (existing?.publicId && process.env.cloud_name) {
+      cloudinary.config({
+        cloud_name: process.env.cloud_name,
+        api_key: process.env.cloud_api_key,
+        api_secret: process.env.cloud_api_secret,
+        secure: true,
+      })
+      await cloudinary.uploader.destroy(existing.publicId).catch(() => {})
+    }
+    await FeaturedPhoto.deleteOne({ businessId: request.businessId })
+    return response.json({ data: { removed: true } })
+  } catch (error) { return next(error) }
 }
+
 
 export async function getLoyaltyProgram(request, response, next) {
   try {

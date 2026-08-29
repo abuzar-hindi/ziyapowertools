@@ -1,5 +1,5 @@
 import mongoose from 'mongoose'
-import { Business, Customer, CustomerReward, LoyaltyProgram, StampEvent, Visit } from '../models/index.js'
+import { Business, Customer, CustomerRegistration, CustomerReward, LoyaltyProgram, StampEvent, StampRequest, Visit } from '../models/index.js'
 import { businessTimezone } from '../services/calendarService.js'
 
 const periodDays = { today: 1, '7d': 7, '30d': 30 }
@@ -94,7 +94,7 @@ export async function getDashboard(request, response, next) {
     const program = await LoyaltyProgram.findOne({ businessId, active: true }).sort({ createdAt: 1 }).lean()
     const required = program?.stampsRequired || 1
 
-    const [totals, newCustomers, activeCustomers, inactiveCustomers, visits, visitsToday, stampsToday, unlocked, waiting, redeemed, closeReward, topCustomers, recentActivity] = await Promise.all([
+    const [totals, newCustomers, activeCustomers, inactiveCustomers, visits, visitsToday, stampsToday, unlocked, waiting, redeemed, closeReward, topCustomers, recentActivity, pendingRegistrations, pendingStamps] = await Promise.all([
       Customer.countDocuments({ businessId }),
       Customer.countDocuments({ businessId, createdAt: { $gte: start } }),
       Customer.countDocuments({ businessId, 'activitySummary.lastVisitAt': { $gte: start } }),
@@ -108,9 +108,12 @@ export async function getDashboard(request, response, next) {
       segment(businessId, 'almost-reward', page, limit, required),
       Visit.aggregate([{ $match: { businessId: scopedBusinessId, occurredAt: { $gte: start } } }, { $group: { _id: '$customerId', visits: { $sum: 1 } } }, { $sort: { visits: -1 } }, { $limit: 10 }]),
       activity(businessId, start, 20),
+      CustomerRegistration.countDocuments({ businessId, status: 'pending' }),
+      StampRequest.countDocuments({ businessId, status: 'pending' }),
     ])
     const topMap = await customerMap(topCustomers.map((customer) => customer._id), businessId)
     const requestedSegment = segmentFilter ? await segment(businessId, segmentFilter, page, limit, required) : null
+    const pendingTotal = pendingRegistrations + pendingStamps
     return response.json({ data: {
       period,
       metrics: {
@@ -125,6 +128,9 @@ export async function getDashboard(request, response, next) {
         rewardsWaiting: waiting,
         rewardsRedeemed: redeemed,
         customersCloseToReward: closeReward.pagination.total,
+        pendingApprovalsCount: pendingTotal,
+        pendingRegistrations,
+        pendingStampRequests: pendingStamps,
       },
       recentActivity,
       topCustomers: topCustomers.map((customer) => ({ id: customer._id.toString(), name: topMap.get(customer._id.toString())?.name || 'Customer', visits: customer.visits })),
@@ -132,6 +138,6 @@ export async function getDashboard(request, response, next) {
       pagination: requestedSegment?.pagination || closeReward.pagination,
     } })
   } catch (error) {
-    return next(error)
+    if (error) return next(error)
   }
-}
+}

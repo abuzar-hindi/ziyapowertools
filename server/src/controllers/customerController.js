@@ -1,5 +1,5 @@
 import mongoose from 'mongoose'
-import { Business, Customer, CustomerReward, FeaturedPhoto, LoyaltyProgram, Reward, StampEvent, Visit } from '../models/index.js'
+import { Business, Customer, CustomerRegistration, CustomerReward, FeaturedPhoto, LoyaltyProgram, Reward, StampEvent, Visit } from '../models/index.js'
 import { normalizePhone } from '../models/Customer.js'
 import { CustomerSession } from '../models/index.js'
 import { ACCESS_TOKEN_COOKIE, createCustomerSessionToken, customerSessionCookieOptions, hashToken } from '../config/customerSession.js'
@@ -50,26 +50,50 @@ export async function identifyCustomer(request, response, next) {
   const { name, phone } = request.body
   const normalizedPhone = normalizePhone(phone)
   try {
-    const customer = await Customer.findOneAndUpdate(
-      { businessId: request.businessId, normalizedPhone },
-      { $set: { name: name.trim(), displayPhone: phone.trim() }, $setOnInsert: { businessId: request.businessId, normalizedPhone } },
-      { returnDocument: 'after', upsert: true, runValidators: true, setDefaultsOnInsert: true, rawResult: false },
-    ).lean()
-    const featuredPhoto = await FeaturedPhoto.exists({ businessId: request.businessId })
-    const sessionToken = createCustomerSessionToken()
-    const value = Number(process.env.CUSTOMER_SESSION_TTL_MINUTES)
-    const minutes = Number.isFinite(value) && value >= 5 && value <= 1440 ? value : 30
-    await CustomerSession.deleteMany({ customerId: customer._id, status: 'active' })
-    await CustomerSession.create({ businessId: request.businessId, customerId: customer._id, tokenHash: hashToken(sessionToken), expiresAt: new Date(Date.now() + minutes * 60 * 1000) })
-    response.cookie(ACCESS_TOKEN_COOKIE, sessionToken, customerSessionCookieOptions())
-    const customerProfile = publicCustomer(customer)
-    delete customerProfile.id
-    return response.status(200).json({ data: { customer: customerProfile, business: publicBusinessLinks({ ...request.qrBusiness, featuredPhotoUrl: featuredPhoto ? '/api/customers/me/featured-photo' : '' }) } })
+    const existingCustomer = await Customer.findOne({ businessId: request.businessId, normalizedPhone }).lean()
+    if (existingCustomer) {
+      const featuredPhoto = await FeaturedPhoto.exists({ businessId: request.businessId })
+      const sessionToken = createCustomerSessionToken()
+      const value = Number(process.env.CUSTOMER_SESSION_TTL_MINUTES)
+      const minutes = Number.isFinite(value) && value >= 5 && value <= 1440 ? value : 30
+      await CustomerSession.deleteMany({ customerId: existingCustomer._id, status: 'active' })
+      await CustomerSession.create({ businessId: request.businessId, customerId: existingCustomer._id, tokenHash: hashToken(sessionToken), expiresAt: new Date(Date.now() + minutes * 60 * 1000) })
+      response.cookie(ACCESS_TOKEN_COOKIE, sessionToken, customerSessionCookieOptions())
+      const customerProfile = publicCustomer(existingCustomer)
+      delete customerProfile.id
+      return response.status(200).json({ data: { customer: customerProfile, business: publicBusinessLinks({ ...request.qrBusiness, featuredPhotoUrl: featuredPhoto ? '/api/customers/me/featured-photo' : '' }) } })
+    }
+
+    let registration = await CustomerRegistration.findOne({ businessId: request.businessId, normalizedPhone }).lean()
+    if (!registration || registration.status === 'rejected') {
+      registration = await CustomerRegistration.create({
+        businessId: request.businessId,
+        name: name.trim(),
+        normalizedPhone,
+        displayPhone: phone.trim(),
+        status: 'pending',
+      })
+    }
+
+    return response.status(202).json({
+      data: {
+        registrationPending: true,
+        message: 'Your registration is waiting for approval.',
+        registration: {
+          id: registration._id ? registration._id.toString() : registration.id,
+          name: registration.name,
+          phone: registration.displayPhone,
+          status: registration.status,
+        },
+        business: publicBusinessLinks(request.qrBusiness),
+      },
+    })
   } catch (error) {
     if (error instanceof mongoose.Error.ValidationError || error.code === 11000) return response.status(400).json(validationError('Customer details are invalid'))
     return next(error)
   }
 }
+
 
 export async function currentCustomer(request, response, next) {
   try {

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test, { after, before, beforeEach } from 'node:test'
 import request from 'supertest'
 import mongoose from 'mongoose'
-import { connectDatabase, disconnectDatabase } from '../src/config/database.js'
+import { clearTestDatabase, connectDatabase, disconnectDatabase } from '../src/config/database.js'
 import { createAccessToken } from '../src/config/auth.js'
 import { Business, AdminUser, QrSession, Customer, CustomerSession } from '../src/models/index.js'
 import { hashPassword } from '../src/config/auth.js'
@@ -18,9 +18,10 @@ let otherBusiness
 let admin
 let password
 
-before(async () => await connectDatabase(process.env.MONGODB_URI))
+before(async () => await connectDatabase())
 beforeEach(async () => {
-  await mongoose.connection.dropDatabase()
+  await connectDatabase()
+  await clearTestDatabase()
   business = await Business.create({ name: 'Brew & Bean' })
   otherBusiness = await Business.create({ name: 'Second Business' })
   password = 'correct horse battery staple'
@@ -77,6 +78,7 @@ test('QR token is opaque and stored only as a hash', async () => {
 })
 
 test('customer identification requires valid QR context and creates a scoped customer session', async () => {
+  await Customer.create({ businessId: business._id, name: 'Abuzar', normalizedPhone: '+15551234567', displayPhone: '+1 (555) 123-4567' })
   const token = await makeQr()
   const response = await request(app).post('/api/customers/identify').send({ qrToken: token, name: 'Abuzar', phone: '+1 (555) 123-4567' })
   assert.equal(response.status, 200)
@@ -90,6 +92,7 @@ test('customer identification requires valid QR context and creates a scoped cus
 })
 
 test('customer session is scoped, short-lived, and cannot access another customer', async () => {
+  await Customer.create({ businessId: business._id, name: 'Abuzar', normalizedPhone: '+15551234567', displayPhone: '+15551234567' })
   const token = await makeQr()
   const agent = request.agent(app)
   await agent.post('/api/customers/identify').send({ qrToken: token, name: 'Abuzar', phone: '+15551234567' })

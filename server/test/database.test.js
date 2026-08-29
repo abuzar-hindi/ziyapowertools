@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test, { after, before, beforeEach } from 'node:test'
 import mongoose from 'mongoose'
-import { connectDatabase, disconnectDatabase } from '../src/config/database.js'
+import { clearTestDatabase, connectDatabase, disconnectDatabase, resolveDatabaseUri, validateDatabaseSafety } from '../src/config/database.js'
 import {
   AdminUser,
   Business,
@@ -15,9 +15,11 @@ import {
 } from '../src/models/index.js'
 import { normalizePhone } from '../src/models/Customer.js'
 
+process.env.NODE_ENV = 'test'
+
 let business
 let otherBusiness
-const databaseUri = process.env.MONGODB_URI
+const databaseUri = resolveDatabaseUri()
 const databaseTestsEnabled = Boolean(databaseUri)
 
 before(async () => {
@@ -28,7 +30,8 @@ before(async () => {
 
 beforeEach(async () => {
   if (!databaseTestsEnabled) return
-  await mongoose.connection.dropDatabase()
+  await connectDatabase()
+  await clearTestDatabase()
   await Customer.init()
   business = await Business.create({ name: 'Brew & Bean' })
   otherBusiness = await Business.create({ name: 'Second Business' })
@@ -38,17 +41,28 @@ after(async () => {
   if (databaseTestsEnabled) await disconnectDatabase()
 })
 
-test('requires MONGODB_URI when no connection string is provided', async () => {
-  const originalUri = process.env.MONGODB_URI
-  delete process.env.MONGODB_URI
+test('STRICT SAFETY GUARD: throws fatal exception if test attempts to connect to non-test database', () => {
+  const unsafeDbs = ['digital_loyalty_dev', 'test', 'production']
+  for (const dbName of unsafeDbs) {
+    assert.throws(
+      () => validateDatabaseSafety('mongodb+srv://user:pass@cluster.mongodb.net/', dbName),
+      (error) => error.code === 'UNSAFE_TEST_DATABASE',
+    )
+  }
+
+  // Safe URIs ending with _test or digital_loyalty_test should pass without error
+  assert.doesNotThrow(() => validateDatabaseSafety('mongodb+srv://user:pass@cluster.mongodb.net/digital_loyalty_test', 'digital_loyalty_test'))
+  assert.doesNotThrow(() => validateDatabaseSafety('mongodb://127.0.0.1:27017/my_app_test', 'my_app_test'))
+})
+
+test('requires MONGODB_URI or MONGODB_TEST_URI when no connection string is provided', async () => {
   await disconnectDatabase()
   try {
     await assert.rejects(
-      () => connectDatabase(),
+      () => connectDatabase(null),
       (error) => error.code === 'MONGODB_URI_MISSING',
     )
   } finally {
-    process.env.MONGODB_URI = originalUri
     if (databaseTestsEnabled) await connectDatabase(databaseUri)
   }
 })
@@ -56,7 +70,7 @@ test('requires MONGODB_URI when no connection string is provided', async () => {
 test('rejects an invalid MongoDB connection safely', async () => {
   await disconnectDatabase()
   await assert.rejects(
-    () => connectDatabase('mongodb://127.0.0.1:1/invalid', { serverSelectionTimeoutMS: 50 }),
+    () => connectDatabase('mongodb://127.0.0.1:1/invalid_test', { serverSelectionTimeoutMS: 50 }),
     /ECONNREFUSED|Server selection timed out|connect/i,
   )
   if (databaseTestsEnabled) await connectDatabase(databaseUri)

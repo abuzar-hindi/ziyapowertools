@@ -3,10 +3,11 @@ import test, { after, before, beforeEach } from 'node:test'
 import jwt from 'jsonwebtoken'
 import request from 'supertest'
 import mongoose from 'mongoose'
-import { connectDatabase, disconnectDatabase } from '../src/config/database.js'
+import { connectDatabase, disconnectDatabase, clearTestDatabase } from '../src/config/database.js'
 import { hashPassword } from '../src/config/auth.js'
 import { AdminUser, Business } from '../src/models/index.js'
 
+process.env.NODE_ENV = 'test'
 process.env.JWT_SECRET ||= 'test-secret-that-is-longer-than-32-characters'
 process.env.FRONTEND_ORIGIN ||= 'http://localhost:5173'
 
@@ -19,11 +20,12 @@ let admin
 let password
 
 before(async () => {
-  await connectDatabase(process.env.MONGODB_URI)
+  await connectDatabase()
 })
 
 beforeEach(async () => {
-  await mongoose.connection.dropDatabase()
+  await connectDatabase()
+  await clearTestDatabase()
   business = await Business.create({ name: 'Brew & Bean' })
   otherBusiness = await Business.create({ name: 'Second Business' })
   password = 'correct horse battery staple'

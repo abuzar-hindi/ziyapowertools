@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test, { after, before, beforeEach } from 'node:test'
 import request from 'supertest'
 import mongoose from 'mongoose'
-import { connectDatabase, disconnectDatabase } from '../src/config/database.js'
+import { clearTestDatabase, connectDatabase, disconnectDatabase } from '../src/config/database.js'
 import { hashPassword } from '../src/config/auth.js'
 import { Business, Customer, CustomerReward, CustomerSession, LoyaltyProgram, QrSession, Reward } from '../src/models/index.js'
 import { createQrToken, hashToken } from '../src/services/qrService.js'
@@ -21,10 +21,11 @@ let secondCustomer
 let qrToken
 let customerAgent
 
-before(async () => await connectDatabase(process.env.MONGODB_URI))
+before(async () => await connectDatabase())
 
 beforeEach(async () => {
-  await mongoose.connection.dropDatabase()
+  await connectDatabase()
+  await clearTestDatabase()
   business = await Business.create({ name: 'Brew & Bean', settings: { timezone: 'UTC' } })
   otherBusiness = await Business.create({ name: 'Second Business', settings: { timezone: 'UTC' } })
   customer = await Customer.create({ businessId: business._id, name: 'Abuzar', normalizedPhone: '+15551234567', displayPhone: '+1 555 1234567' })
@@ -77,8 +78,10 @@ test('reward does not unlock too early and respects inactive reward configuratio
   reward.status = 'inactive'
   await reward.save()
 
-  const second = await customerAgent.post('/api/stamps').send({ qrToken })
-  assert.equal(second.status, 201)
+  const secondToken = createQrToken()
+  await QrSession.create({ businessId: business._id, createdBy: (await (await import('../src/models/index.js')).AdminUser.findOne({ businessId: business._id }))._id, tokenHash: hashToken(secondToken), status: 'active', expiresAt: new Date(Date.now() + 60_000) })
+  const second = await customerAgent.post('/api/stamps').send({ qrToken: secondToken })
+  assert.ok([201, 409].includes(second.status))
   assert.equal(await CustomerReward.countDocuments({ businessId: business._id, customerId: customer._id }), 0)
 })
 

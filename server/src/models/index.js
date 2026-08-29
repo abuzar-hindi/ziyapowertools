@@ -10,3 +10,5 @@ export { default as CustomerReward } from './CustomerReward.js'
 export { default as CustomerSession } from './CustomerSession.js'
 export { default as StampRequest } from './StampRequest.js'
 export { default as FeaturedPhoto } from './FeaturedPhoto.js'
+export { default as CustomerRegistration } from './CustomerRegistration.js'
+

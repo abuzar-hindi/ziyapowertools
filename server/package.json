@@ -7,6 +7,7 @@
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
     "setup:admin": "node src/cli/setupAdmin.js",
+    "reset:admin": "node src/cli/resetAdmin.js",
     "test": "node --import dotenv/config --test --test-concurrency=1"
   },
   "keywords": [],
@@ -15,6 +16,7 @@
   "description": "",
   "dependencies": {
     "bcryptjs": "^3.0.3",
+    "cloudinary": "^2.11.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",

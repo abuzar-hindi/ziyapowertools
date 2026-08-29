@@ -1,3 +1,4 @@
+import { FeaturedPhoto } from '../models/index.js'
 import { createPermanentQr, createQrSession, validateQrToken } from '../services/qrService.js'
 
 export async function createSession(request, response, next) {
@@ -15,7 +16,19 @@ export async function validateSession(request, response, next) {
   try {
     const result = await validateQrToken(token)
     if (!result) return response.status(404).json({ error: { code: 'INVALID_QR', message: 'This QR code is invalid or expired' } })
-    return response.json({ data: { business: { name: result.business.name, logo: result.business.logo || '', address: result.business.address || {}, phone: result.business.phone || '', whatsappNumber: result.business.whatsappNumber || '', googleReviewUrl: result.business.googleReviewUrl || '', socialLinks: result.business.socialLinks || {}, settings: result.business.settings || {} }, permanent: Boolean(result.permanent), expiresAt: result.session?.expiresAt || null } })
+    const featuredPhoto = await FeaturedPhoto.exists({ businessId: result.business._id })
+    const businessData = {
+      name: result.business.name,
+      logo: result.business.logo || '',
+      address: result.business.address || {},
+      phone: result.business.phone || '',
+      whatsappNumber: result.business.whatsappNumber || '',
+      googleReviewUrl: result.business.googleReviewUrl || '',
+      socialLinks: result.business.socialLinks || {},
+      settings: result.business.settings || {},
+      featuredPhotoUrl: featuredPhoto ? '/api/customers/me/featured-photo' : '',
+    }
+    return response.json({ data: { business: businessData, permanent: Boolean(result.permanent), expiresAt: result.session?.expiresAt || null } })
   } catch (error) {
     return next(error)
   }
@@ -29,6 +42,18 @@ export async function validatePermanent(request, response, next) {
   try {
     const result = await validateQrToken(request.body?.token)
     if (!result || !result.permanent) return response.status(404).json({ error: { code: 'INVALID_QR', message: 'This QR code is invalid or expired' } })
-    return response.json({ data: { business: { name: result.business.name, logo: result.business.logo || '', address: result.business.address || {}, phone: result.business.phone || '', whatsappNumber: result.business.whatsappNumber || '', googleReviewUrl: result.business.googleReviewUrl || '', socialLinks: result.business.socialLinks || {}, settings: result.business.settings || {} } } })
+    const featuredPhoto = await FeaturedPhoto.exists({ businessId: result.business._id })
+    const businessData = {
+      name: result.business.name,
+      logo: result.business.logo || '',
+      address: result.business.address || {},
+      phone: result.business.phone || '',
+      whatsappNumber: result.business.whatsappNumber || '',
+      googleReviewUrl: result.business.googleReviewUrl || '',
+      socialLinks: result.business.socialLinks || {},
+      settings: result.business.settings || {},
+      featuredPhotoUrl: featuredPhoto ? '/api/customers/me/featured-photo' : '',
+    }
+    return response.json({ data: { business: businessData } })
   } catch (error) { return next(error) }
 }
