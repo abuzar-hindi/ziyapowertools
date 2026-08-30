@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import './App.css'
 import { getCurrentAdmin, login, logout } from './services/auth'
+import { apiFetch } from './services/api'
 
 const emptyBusiness = {
   name: '', logo: '', address: { line1: '', line2: '', city: '', postalCode: '', country: '' },
@@ -97,14 +98,14 @@ function AdminWorkspace({ admin, section, setSection, onLogout }) {
   const [pendingCount, setPendingCount] = useState(0)
 
   useEffect(() => {
-    fetch('/api/business', { credentials: 'include' })
+    apiFetch('/business')
       .then((response) => response.json())
       .then((body) => setBusinessName(body.data?.business?.name || 'Your business'))
       .catch(() => {})
   }, [])
 
   useEffect(() => {
-    fetch('/api/dashboard?period=30d', { credentials: 'include' })
+    apiFetch('/dashboard?period=30d')
       .then((res) => res.json())
       .then((body) => {
         if (body.data?.metrics?.pendingApprovalsCount !== undefined) {
@@ -181,7 +182,7 @@ function AdminOverview({ businessName, onNavigate }) {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    fetch('/api/dashboard?period=30d', { credentials: 'include' })
+    apiFetch('/dashboard?period=30d')
       .then(async (response) => {
         const body = await response.json()
         if (!response.ok) throw new Error(body.error?.message || 'Unable to load dashboard.')
@@ -292,8 +293,8 @@ function AdminApprovals({ onCountChange }) {
     setError('')
     try {
       const [regRes, stampRes] = await Promise.all([
-        fetch('/api/customer-registrations/pending', { credentials: 'include' }),
-        fetch('/api/stamp-requests/pending', { credentials: 'include' }),
+        apiFetch('/customer-registrations/pending'),
+        apiFetch('/stamp-requests/pending'),
       ])
       const regBody = await regRes.json().catch(() => ({}))
       const stampBody = await stampRes.json().catch(() => ({}))
@@ -317,8 +318,8 @@ function AdminApprovals({ onCountChange }) {
 
   async function reviewRegistration(id, action) {
     try {
-      const response = await fetch(`/api/customer-registrations/${id}/review`, {
-        method: 'POST', credentials: 'include',
+      const response = await apiFetch(`/customer-registrations/${id}/review`, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action }),
       })
@@ -339,8 +340,8 @@ function AdminApprovals({ onCountChange }) {
 
   async function reviewStamp(id, action) {
     try {
-      const response = await fetch(`/api/stamp-requests/${id}/review`, {
-        method: 'POST', credentials: 'include',
+      const response = await apiFetch(`/stamp-requests/${id}/review`, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action }),
       })
@@ -423,11 +424,11 @@ function PendingRequests() {
   const [requests, setRequests] = useState([])
   const [error, setError] = useState('')
   async function load() {
-    try { const response = await fetch('/api/stamp-requests/pending', { credentials: 'include' }); const body = await response.json(); if (!response.ok) throw new Error(body.error?.message || 'Unable to load pending requests.'); setRequests(body.data.requests || []) } catch (requestError) { setError(requestError.message) }
+    try { const response = await apiFetch('/stamp-requests/pending'); const body = await response.json(); if (!response.ok) throw new Error(body.error?.message || 'Unable to load pending requests.'); setRequests(body.data.requests || []) } catch (requestError) { setError(requestError.message) }
   }
   useEffect(() => { load() }, [])
   async function review(id, action) {
-    const response = await fetch(`/api/stamp-requests/${id}/review`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action }) })
+    const response = await apiFetch(`/stamp-requests/${id}/review`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action }) })
     if (response.ok) setRequests((current) => current.filter((request) => request.id !== id))
     else { const body = await response.json().catch(() => ({})); setError(body.error?.message || 'Unable to review request.') }
   }
@@ -442,17 +443,17 @@ function AdminEmpty({ title, text }) { return <div className="admin-empty"><span
 
 function AdminCustomers() {
   const [customers, setCustomers] = useState([]); const [pagination, setPagination] = useState(null); const [search, setSearch] = useState(''); const [filter, setFilter] = useState('all'); const [page, setPage] = useState(1); const [selected, setSelected] = useState(null); const [error, setError] = useState('')
-  useEffect(() => { const query = new URLSearchParams({ search, filter: filter === 'active' ? 'recently-active' : filter === 'new' ? 'new' : filter === 'inactive' ? 'inactive' : 'all', page, limit: 10 }); fetch(`/api/customers?${query}`, { credentials: 'include' }).then(async (response) => { const body = await response.json(); if (!response.ok) throw new Error(body.error?.message || 'Unable to load customers.'); setCustomers(body.data.customers); setPagination(body.data.pagination) }).catch((requestError) => setError(requestError.message)) }, [search, filter, page])
+  useEffect(() => { const query = new URLSearchParams({ search, filter: filter === 'active' ? 'recently-active' : filter === 'new' ? 'new' : filter === 'inactive' ? 'inactive' : 'all', page, limit: 10 }); apiFetch(`/customers?${query}`).then(async (response) => { const body = await response.json(); if (!response.ok) throw new Error(body.error?.message || 'Unable to load customers.'); setCustomers(body.data.customers); setPagination(body.data.pagination) }).catch((requestError) => setError(requestError.message)) }, [search, filter, page])
   if (selected) return <CustomerDetail customerId={selected} onBack={() => setSelected(null)} />
   return <><div className="admin-heading-row"><div><span className="admin-eyebrow">CUSTOMER MANAGEMENT</span><h1>Customers</h1><p>Manage your customers and understand their activity.</p></div><button className="admin-secondary" type="button">Filter <span>≡</span></button></div><div className="customer-toolbar"><label className="admin-search"><span>⌕</span><input aria-label="Search customers" placeholder="Search customers..." value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} /></label><div className="filter-pills">{[['all', 'All'], ['active', 'Active'], ['inactive', 'Inactive'], ['new', 'New'], ['reward', 'Reward ready']].map(([value, label]) => <button type="button" className={filter === value ? 'active' : ''} onClick={() => { setFilter(value); setPage(1) }} key={value}>{label}</button>)}</div></div>{error && <AdminError message={error} />}<section className="customer-table admin-panel"><div className="customer-table-head"><span>Customer</span><span>Visits</span><span>Progress</span><span>Last visit</span><span>Status</span><span>Action</span></div>{customers.map((customer) => <div className="customer-row" key={customer.id}><div className="customer-identity"><span className="customer-avatar">{customer.name.charAt(0)}</span><div><button type="button" onClick={() => setSelected(customer.id)}>{customer.name}</button><small>{customer.phone}</small></div></div><span data-label="Visits">{customer.totalVisits}</span><span data-label="Progress"><b className="progress-text">{customer.progress.current}/{customer.progress.required}</b><i className="progress-line"><em style={{ width: `${Math.min(100, (customer.progress.current / Math.max(customer.progress.required, 1)) * 100)}%` }} /></i></span><span data-label="Last visit">{customer.lastVisitAt ? new Date(customer.lastVisitAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—'}</span><span data-label="Status">{customer.rewardReady ? <b className="status-badge ready">Reward ready</b> : <b className="status-badge">Active</b>}</span><a className="row-action" href={`https://wa.me/${customer.phone.replace(/\D/g, '')}`} target="_blank" rel="noreferrer">Message ↗</a></div>)}{!customers.length && !error && <AdminEmpty title="No customers yet" text="Customers will appear here after their first check-in." />}</section>{pagination && <div className="pagination"><span>Page {pagination.page} of {pagination.pages}</span><div><button type="button" disabled={page <= 1} onClick={() => setPage(page - 1)}>←</button><button type="button" disabled={page >= pagination.pages} onClick={() => setPage(page + 1)}>→</button></div></div>}</>
 }
 
-function CustomerDetail({ customerId, onBack }) { const [data, setData] = useState(null); const [error, setError] = useState(''); useEffect(() => { Promise.all([fetch(`/api/customers/${customerId}`, { credentials: 'include' }), fetch(`/api/customers/${customerId}/history`, { credentials: 'include' })]).then(async ([profile, history]) => { if (!profile.ok || !history.ok) throw new Error('Unable to load customer details.'); setData({ ...(await profile.json()).data, history: (await history.json()).data }) }).catch((requestError) => setError(requestError.message)) }, [customerId]); if (error) return <AdminError message={error} />; if (!data) return <AdminLoading label="Loading customer details..." />; const progress = data.customer.progress; return <><button className="back-link" type="button" onClick={onBack}>← Back to customers</button><div className="detail-heading"><span className="customer-avatar large">{data.customer.name.charAt(0)}</span><div><span className="admin-eyebrow">CUSTOMER PROFILE</span><h1>{data.customer.name}</h1><p>{data.customer.phone}</p></div><a className="admin-primary" href={`https://wa.me/${data.customer.phone.replace(/\D/g, '')}`} target="_blank" rel="noreferrer">Message on WhatsApp</a></div><div className="detail-stats"><div><span>Total visits</span><strong>{data.customer.activitySummary?.totalVisits || data.history.visits.length}</strong></div><div><span>Progress</span><strong>{progress.current}/{progress.required}</strong></div><div><span>Joined</span><strong>{new Date(data.customer.createdAt).toLocaleDateString()}</strong></div></div><section className="admin-panel detail-history"><PanelTitle title="Visit history" /><div className="activity-list">{data.history.visits.map((visit) => <div className="activity-row" key={visit._id}><span className="activity-avatar success">✓</span><div><strong>Stamp collected</strong><span>{visit.stampDay}</span></div><time>{new Date(visit.occurredAt).toLocaleDateString()}</time></div>)}{!data.history.visits.length && <AdminEmpty title="No activity yet" text="This customer's visits will appear here." />}</div></section></> }
+function CustomerDetail({ customerId, onBack }) { const [data, setData] = useState(null); const [error, setError] = useState(''); useEffect(() => { Promise.all([apiFetch(`/customers/${customerId}`), apiFetch(`/customers/${customerId}/history`)]).then(async ([profile, history]) => { if (!profile.ok || !history.ok) throw new Error('Unable to load customer details.'); setData({ ...(await profile.json()).data, history: (await history.json()).data }) }).catch((requestError) => setError(requestError.message)) }, [customerId]); if (error) return <AdminError message={error} />; if (!data) return <AdminLoading label="Loading customer details..." />; const progress = data.customer.progress; return <><button className="back-link" type="button" onClick={onBack}>← Back to customers</button><div className="detail-heading"><span className="customer-avatar large">{data.customer.name.charAt(0)}</span><div><span className="admin-eyebrow">CUSTOMER PROFILE</span><h1>{data.customer.name}</h1><p>{data.customer.phone}</p></div><a className="admin-primary" href={`https://wa.me/${data.customer.phone.replace(/\D/g, '')}`} target="_blank" rel="noreferrer">Message on WhatsApp</a></div><div className="detail-stats"><div><span>Total visits</span><strong>{data.customer.activitySummary?.totalVisits || data.history.visits.length}</strong></div><div><span>Progress</span><strong>{progress.current}/{progress.required}</strong></div><div><span>Joined</span><strong>{new Date(data.customer.createdAt).toLocaleDateString()}</strong></div></div><section className="admin-panel detail-history"><PanelTitle title="Visit history" /><div className="activity-list">{data.history.visits.map((visit) => <div className="activity-row" key={visit._id}><span className="activity-avatar success">✓</span><div><strong>Stamp collected</strong><span>{visit.stampDay}</span></div><time>{new Date(visit.occurredAt).toLocaleDateString()}</time></div>)}{!data.history.visits.length && <AdminEmpty title="No activity yet" text="This customer's visits will appear here." />}</div></section></> }
 
 function AdminLoyalty() {
   const initial = { active: true, stampsRequired: 6 }; const [form, setForm] = useState(initial); const [savedForm, setSavedForm] = useState(initial); const [loading, setLoading] = useState(true); const [saving, setSaving] = useState(false); const [message, setMessage] = useState(''); const [error, setError] = useState(''); const dirty = JSON.stringify(form) !== JSON.stringify(savedForm)
-  useEffect(() => { fetch('/api/loyalty-program', { credentials: 'include' }).then((response) => response.json()).then((body) => { if (body.data?.program) { const nextForm = { active: body.data.program.active, stampsRequired: body.data.program.stampsRequired }; setForm(nextForm); setSavedForm(nextForm) } }).catch(() => setError('Unable to load loyalty settings.')).finally(() => setLoading(false)) }, [])
-  async function save(event) { event.preventDefault(); if (!dirty) return; setSaving(true); setMessage(''); setError(''); try { const response = await fetch('/api/loyalty-program', { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ active: form.active, stampsRequired: Number(form.stampsRequired) }) }); const body = await response.json(); if (!response.ok) throw new Error(body.error?.message || 'Unable to save settings.'); const nextForm = { active: body.data.program.active, stampsRequired: body.data.program.stampsRequired }; setForm(nextForm); setSavedForm(nextForm); setMessage('Changes saved') } catch (saveError) { setError(saveError.message) } finally { setSaving(false) } }
+  useEffect(() => { apiFetch('/loyalty-program').then((response) => response.json()).then((body) => { if (body.data?.program) { const nextForm = { active: body.data.program.active, stampsRequired: body.data.program.stampsRequired }; setForm(nextForm); setSavedForm(nextForm) } }).catch(() => setError('Unable to load loyalty settings.')).finally(() => setLoading(false)) }, [])
+  async function save(event) { event.preventDefault(); if (!dirty) return; setSaving(true); setMessage(''); setError(''); try { const response = await apiFetch('/loyalty-program', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ active: form.active, stampsRequired: Number(form.stampsRequired) }) }); const body = await response.json(); if (!response.ok) throw new Error(body.error?.message || 'Unable to save settings.'); const nextForm = { active: body.data.program.active, stampsRequired: body.data.program.stampsRequired }; setForm(nextForm); setSavedForm(nextForm); setMessage('Changes saved') } catch (saveError) { setError(saveError.message) } finally { setSaving(false) } }
   if (loading) return <AdminLoading label="Loading loyalty program..." />
   return <form className="admin-panel admin-form loyalty-manager" onSubmit={save}><div className="admin-heading-row compact"><div><span className="admin-eyebrow">LOYALTY PROGRAM</span><h1>Loyalty</h1><p>Set the milestone customers are working toward.</p></div><label className="toggle-control"><input type="checkbox" checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} /><span>{form.active ? 'Active' : 'Inactive'}</span></label></div><div className="loyalty-setting-row"><div><span className="form-label">Collect</span><strong>{form.stampsRequired} stamps</strong></div><input aria-label="Required stamps" type="number" min="1" max="100" value={form.stampsRequired} onChange={(event) => setForm({ ...form, stampsRequired: Number(event.target.value) })} /></div><div className="loyalty-preview"><div><span className="admin-eyebrow">CUSTOMER CARD PREVIEW</span><h2>{form.stampsRequired} visits to a reward</h2><p>Informational preview of the current program.</p></div><div className="preview-stamps">{Array.from({ length: Math.min(Number(form.stampsRequired) || 6, 12) }, (_, index) => <span className={index < Math.min(3, Number(form.stampsRequired) || 6) ? 'filled' : ''} key={index}>{index < 3 ? '●' : '○'}</span>)}</div></div>{error && <p role="alert" className="admin-form-error">{error}</p>}{message && <p role="status" className="admin-success">{message}</p>}<button type="submit" className="admin-primary" disabled={saving || !dirty}>{saving ? 'Saving...' : dirty ? 'Save changes' : 'Changes saved'} <span>→</span></button></form>
 }
@@ -469,7 +470,7 @@ function AdminRewards() {
 
   async function loadRewards() {
     try {
-      const response = await fetch('/api/rewards/manage', { credentials: 'include' })
+      const response = await apiFetch('/rewards/manage')
       const body = await response.json()
       setRewards(body.data?.rewards || [])
     } catch {
@@ -500,8 +501,8 @@ function AdminRewards() {
   async function toggleStatus(reward) {
     const nextStatus = reward.status === 'active' ? 'inactive' : 'active'
     try {
-      const response = await fetch(`/api/rewards/manage/${reward._id}`, {
-        method: 'PATCH', credentials: 'include',
+      const response = await apiFetch(`/rewards/manage/${reward._id}`, {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ description: reward.description, status: nextStatus, milestoneStamps: reward.milestoneStamps || 6 }),
       })
@@ -520,10 +521,9 @@ function AdminRewards() {
     setError('')
     setMessage('')
     try {
-      const path = editingId ? `/api/rewards/manage/${editingId}` : '/api/rewards/manage'
-      const response = await fetch(path, {
+      const path = editingId ? `/rewards/manage/${editingId}` : '/rewards/manage'
+      const response = await apiFetch(path, {
         method: editingId ? 'PATCH' : 'POST',
-        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...form, milestoneStamps: Number(form.milestoneStamps) }),
       })
@@ -637,17 +637,17 @@ function AdminSettings({ section = 'business', admin }) { return <>{section === 
 
 function PermanentQrPanel() {
   const [qr, setQr] = useState(null); const [loading, setLoading] = useState(false); const [error, setError] = useState('')
-  async function load() { setLoading(true); setError(''); try { const response = await fetch('/api/qr/permanent', { credentials: 'include' }); const body = await response.json(); if (!response.ok) throw new Error(body.error?.message || 'Unable to load permanent QR.'); setQr(body.data.qr) } catch (requestError) { setError(requestError.message) } finally { setLoading(false) } }
+  async function load() { setLoading(true); setError(''); try { const response = await apiFetch('/qr/permanent'); const body = await response.json(); if (!response.ok) throw new Error(body.error?.message || 'Unable to load permanent QR.'); setQr(body.data.qr) } catch (requestError) { setError(requestError.message) } finally { setLoading(false) } }
   useEffect(() => { load() }, [])
   return <section className="admin-panel qr-panel"><div className="admin-heading-row compact"><div><span className="admin-eyebrow">PERMANENT CUSTOMER CHECK-IN</span><h1>QR / Check-in</h1><p>Print this one QR and display it at your business permanently.</p></div><span className="status-badge ready">Permanent</span></div><div className="qr-content">{qr ? <><div className="qr-frame"><img src={qr.qrImage} alt="Permanent customer QR code" /></div><div className="qr-meta"><span className="status-badge ready">Never expires</span><p>Customers scan, identify, and request today's stamp.</p><a href={qr.customerUrl} target="_blank" rel="noreferrer">Open customer flow ↗</a></div></> : <div className="qr-empty"><span>⌁</span><strong>{loading ? 'Preparing your QR...' : 'Permanent QR unavailable'}</strong><p>{error || 'Try again.'}</p></div>}</div>{error && <p role="alert" className="admin-form-error">{error}</p>}<button type="button" className="admin-primary" onClick={load} disabled={loading}>{loading ? 'Loading...' : 'Refresh QR'} <span>→</span></button></section>
 }
 
 function ShopSettings() {
   const initial = { manualStatus: 'auto', days: defaultShopDays, openTime: '09:00', closeTime: '21:00' }; const [form, setForm] = useState(initial); const [savedForm, setSavedForm] = useState(initial); const [photo, setPhoto] = useState(null); const [file, setFile] = useState(null); const [message, setMessage] = useState(''); const [error, setError] = useState(''); const dirty = JSON.stringify(form) !== JSON.stringify(savedForm)
-  useEffect(() => { Promise.all([fetch('/api/shop', { credentials: 'include' }), fetch('/api/featured-photo', { credentials: 'include' })]).then(async ([shopResponse, photoResponse]) => { const shop = await shopResponse.json(); const photoBody = await photoResponse.json(); if (shop.data?.settings) { const nextForm = { manualStatus: shop.data.settings.manualStatus || 'auto', days: shop.data.settings.operatingHours?.days || defaultShopDays, openTime: shop.data.settings.operatingHours?.openTime || '09:00', closeTime: shop.data.settings.operatingHours?.closeTime || '21:00' }; setForm(nextForm); setSavedForm(nextForm) } setPhoto(photoBody.data?.photo || null) }).catch(() => setError('Unable to load shop settings.')) }, [])
-  async function saveShop(event) { event.preventDefault(); if (!dirty) return; setMessage(''); const response = await fetch('/api/shop', { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) }); const body = await response.json(); if (!response.ok) return setError(body.error?.message || 'Unable to save shop hours.'); setSavedForm(form); setMessage('Changes saved') }
-  async function uploadPhoto(event) { event.preventDefault(); if (!file) return setError('Choose a landscape photo first.'); if (photo && !window.confirm('A featured photo already exists. Replace it?')) return; const payload = new FormData(); payload.append('photo', file); if (photo) payload.append('replace', 'true'); const response = await fetch('/api/featured-photo', { method: 'POST', credentials: 'include', body: payload }); const body = await response.json(); if (!response.ok) return setError(body.error?.message || 'Unable to upload photo.'); setPhoto(body.data.photo); setFile(null); event.target.reset(); setMessage('Featured photo saved.') }
-  return <section className="shop-settings admin-panel"><div className="admin-eyebrow">SHOP EXPERIENCE</div><h2>Opening hours & featured photo</h2><p className="settings-help">Give customers a clear sense of when you are open and what to expect.</p><form onSubmit={saveShop} className="shop-hours-form"><label>Status<select value={form.manualStatus} onChange={(event) => setForm({ ...form, manualStatus: event.target.value })}><option value="auto">Use opening hours</option><option value="open">Manually open</option><option value="closed">Manually closed</option></select></label><div className="day-picker"><span>Open days</span><div>{[['Sun', 0], ['Mon', 1], ['Tue', 2], ['Wed', 3], ['Thu', 4], ['Fri', 5], ['Sat', 6]].map(([label, day]) => <button type="button" className={form.days.includes(day) ? 'selected' : ''} onClick={() => setForm({ ...form, days: form.days.includes(day) ? form.days.filter((value) => value !== day) : [...form.days, day] })} key={label}>{label}</button>)}</div></div><label>Opening time<input type="time" value={form.openTime} onChange={(event) => setForm({ ...form, openTime: event.target.value })} /></label><label>Closing time<input type="time" value={form.closeTime} onChange={(event) => setForm({ ...form, closeTime: event.target.value })} /></label><button className="admin-primary" type="submit" disabled={!dirty}>{dirty ? 'Save changes' : 'Changes saved'} →</button></form><div className="photo-manager"><div><span className="admin-eyebrow">FEATURED PHOTO</span><strong>{photo ? 'One photo is active' : 'No featured photo yet'}</strong><p>Landscape JPEG, PNG, or WebP up to 5 MB.</p></div>{photo && <img src={photo.url} alt="Current featured business" />}</div><form onSubmit={uploadPhoto} className="photo-upload"><input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => setFile(event.target.files?.[0] || null)} /><button className="admin-secondary" type="submit">{photo ? 'Choose replacement' : 'Upload photo'}</button></form>{error && <p role="alert" className="admin-form-error">{error}</p>}{message && <p role="status" className="admin-success">{message}</p>}</section>
+  useEffect(() => { Promise.all([apiFetch('/shop'), apiFetch('/featured-photo')]).then(async ([shopResponse, photoResponse]) => { const shop = await shopResponse.json(); const photoBody = await photoResponse.json(); if (shop.data?.settings) { const nextForm = { manualStatus: shop.data.settings.manualStatus || 'auto', days: shop.data.settings.operatingHours?.days || defaultShopDays, openTime: shop.data.settings.operatingHours?.openTime || '09:00', closeTime: shop.data.settings.operatingHours?.closeTime || '21:00' }; setForm(nextForm); setSavedForm(nextForm) } setPhoto(photoBody.data?.photo || null) }).catch(() => setError('Unable to load shop settings.')) }, [])
+  async function saveShop(event) { event.preventDefault(); if (!dirty) return; setMessage(''); const response = await apiFetch('/shop', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) }); const body = await response.json(); if (!response.ok) return setError(body.error?.message || 'Unable to save shop hours.'); setSavedForm(form); setMessage('Changes saved') }
+  async function uploadPhoto(event) { event.preventDefault(); if (!file) return setError('Choose a landscape photo first.'); if (photo && !window.confirm('A featured photo already exists. Replace it?')) return; const payload = new FormData(); payload.append('photo', file); if (photo) payload.append('replace', 'true'); const response = await apiFetch('/featured-photo', { method: 'POST', body: payload }); const body = await response.json(); if (!response.ok) return setError(body.error?.message || 'Unable to upload photo.'); setPhoto(body.data.photo); setFile(null); event.target.reset(); setMessage('Featured photo saved.') }
+  return <section className="shop-settings admin-panel"><div className="admin-eyebrow">SHOP EXPERIENCE</div><h2>Opening hours & featured photo</h2><p className="settings-help">Give customers a clear sense of when you are open and what to expect.</p><form onSubmit={saveShop} className="shop-hours-form"><label>Status<select value={form.manualStatus} onChange={(event) => setForm({ ...form, manualStatus: event.target.value })}><option value="auto">Use opening hours</option><option value="open">Manually open</option><option value="closed">Manually closed</option></select></label><div className="day-picker"><span>Open days</span><div>{[['Sun', 0], ['Mon', 1], ['Tue', 2], ['Wed', 3], ['Thu', 4], ['Fri', 5], ['Sat', 6]].map(([label, day]) => <button type="button" className={form.days.includes(day) ? 'selected' : ''} onClick={() => setForm({ ...form, days: form.days.includes(day) ? form.days.filter((value) => value !== day) : [...form.days, day] })} key={label}>{label}</button>)}</div></div><label>Opening time<input type="time" value={form.openTime} onChange={(event) => setForm({ ...event, openTime: event.target.value })} /></label><label>Closing time<input type="time" value={form.closeTime} onChange={(event) => setForm({ ...form, closeTime: event.target.value })} /></label><button className="admin-primary" type="submit" disabled={!dirty}>{dirty ? 'Save changes' : 'Changes saved'} →</button></form><div className="photo-manager"><div><span className="admin-eyebrow">FEATURED PHOTO</span><strong>{photo ? 'One photo is active' : 'No featured photo yet'}</strong><p>Landscape JPEG, PNG, or WebP up to 5 MB.</p></div>{photo && <img src={photo.url} alt="Current featured business" />}</div><form onSubmit={uploadPhoto} className="photo-upload"><input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => setFile(event.target.files?.[0] || null)} /><button className="admin-secondary" type="submit">{photo ? 'Choose replacement' : 'Upload photo'}</button></form>{error && <p role="alert" className="admin-form-error">{error}</p>}{message && <p role="status" className="admin-success">{message}</p>}</section>
 }
 
 function CustomerExperience() {
@@ -672,7 +672,7 @@ function CustomerExperience() {
   const [online, setOnline] = useState(navigator.onLine)
 
   async function refreshProgress() {
-    const response = await fetch('/api/stamps/progress', { credentials: 'include' })
+    const response = await apiFetch('/stamps/progress')
     if (response.ok) setProgress((await response.json()).data.progress)
   }
 
@@ -685,7 +685,7 @@ function CustomerExperience() {
 
   useEffect(() => {
     if (!qrToken) return
-    fetch('/api/qr/sessions/validate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: qrToken }) })
+    apiFetch('/qr/sessions/validate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: qrToken }) })
       .then(async (response) => { const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error('This QR code has expired. Please ask the business for a new one.'); setBusiness(body.data.business); if (body.data.business?.featuredPhotoUrl) setFeaturedPhoto(body.data.business.featuredPhotoUrl) })
       .catch((requestError) => setError(requestError.message)).finally(() => setLoading(false))
   }, [qrToken])
@@ -693,10 +693,10 @@ function CustomerExperience() {
   useEffect(() => {
     if (!qrToken) return
     Promise.all([
-      fetch('/api/customers/me', { credentials: 'include' }),
-      fetch('/api/rewards', { credentials: 'include' }),
-      fetch('/api/customers/me/history', { credentials: 'include' }),
-      fetch('/api/stamp-requests/current', { credentials: 'include' }),
+      apiFetch('/customers/me'),
+      apiFetch('/rewards'),
+      apiFetch('/customers/me/history'),
+      apiFetch('/stamp-requests/current'),
     ]).then(async ([profileResponse, rewardsResponse, historyResponse, requestResponse]) => {
       if (!profileResponse.ok) return
       const profile = await profileResponse.json()
@@ -711,7 +711,7 @@ function CustomerExperience() {
 
   async function refreshData() {
     await refreshProgress()
-    const [rewardResponse, historyResponse, requestResponse] = await Promise.all([fetch('/api/rewards', { credentials: 'include' }), fetch('/api/customers/me/history', { credentials: 'include' }), fetch('/api/stamp-requests/current', { credentials: 'include' })])
+    const [rewardResponse, historyResponse, requestResponse] = await Promise.all([apiFetch('/rewards'), apiFetch('/customers/me/history'), apiFetch('/stamp-requests/current')])
     if (rewardResponse.ok) {
       const nextRewards = (await rewardResponse.json()).data.rewards || []
       const newlyUnlocked = nextRewards.find((reward) => reward.status === 'unlocked' && !rewards.some((currentReward) => currentReward._id === reward._id && currentReward.status === 'unlocked'))
@@ -729,7 +729,7 @@ function CustomerExperience() {
     if (!name.trim() || !phone.trim()) return setError('Enter your name and phone number.')
     setSaving(true)
     try {
-      const response = await fetch('/api/customers/identify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ qrToken, name, phone }) })
+      const response = await apiFetch('/customers/identify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ qrToken, name, phone }) })
       const body = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(body.error?.message || 'Unable to save your details.')
 
@@ -750,7 +750,7 @@ function CustomerExperience() {
     if (!online) return setMessage('Reconnect before collecting a stamp.')
     setStamping(true); setMessage('')
     try {
-      const response = await fetch('/api/stamp-requests', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ qrToken }) })
+      const response = await apiFetch('/stamp-requests', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ qrToken }) })
       const body = await response.json().catch(() => ({}))
       if (response.status === 409) setMessage(body.error?.code === 'STAMP_REQUEST_PENDING' ? 'Stamp requested · waiting for confirmation.' : "Today's stamp is already collected.")
       else if (!response.ok) throw new Error(body.error?.message || 'Unable to collect today\'s stamp.')
@@ -761,7 +761,7 @@ function CustomerExperience() {
 
   async function redeem(rewardId) {
     if (!online) return setMessage('Reconnect before redeeming a reward.')
-    const response = await fetch(`/api/rewards/${rewardId}/redeem`, { method: 'POST', credentials: 'include' })
+    const response = await apiFetch(`/rewards/${rewardId}/redeem`, { method: 'POST' })
     const body = await response.json().catch(() => ({})); if (!response.ok) return setMessage(body.error?.message || 'Unable to redeem this reward.')
     setMessage('Reward redeemed. Your next card has started.'); await refreshData()
   }
@@ -907,7 +907,7 @@ export function CustomerRegistration() {
 
   useEffect(() => {
     if (!qrToken) return
-    fetch('/api/qr/sessions/validate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: qrToken }) })
+    apiFetch('/qr/sessions/validate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: qrToken }) })
       .then(async (response) => {
         const body = await response.json().catch(() => ({}))
         if (!response.ok) throw new Error('This QR code has expired. Please ask the business for a new one.')
@@ -919,7 +919,7 @@ export function CustomerRegistration() {
 
   useEffect(() => {
     if (!qrToken) return
-    Promise.all([fetch('/api/customers/me', { credentials: 'include' }), fetch('/api/rewards', { credentials: 'include' })])
+    Promise.all([apiFetch('/customers/me'), apiFetch('/rewards')])
       .then(async ([profileResponse, rewardsResponse]) => {
         if (!profileResponse.ok) return
         const profile = await profileResponse.json()
@@ -947,7 +947,7 @@ export function CustomerRegistration() {
     }
     setSaving(true)
     try {
-      const response = await fetch('/api/customers/identify', {
+      const response = await apiFetch('/customers/identify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ qrToken, name, phone }),
@@ -972,17 +972,17 @@ export function CustomerRegistration() {
   }
 
   async function refreshProgress() {
-    const response = await fetch('/api/stamps/progress', { credentials: 'include' })
+    const response = await apiFetch('/stamps/progress')
     if (response.ok) setProgress((await response.json()).data.progress)
   }
 
   async function refreshRewards() {
-    const response = await fetch('/api/rewards', { credentials: 'include' })
+    const response = await apiFetch('/rewards')
     if (response.ok) setRewards((await response.json()).data.rewards || [])
   }
 
   async function redeem(rewardId) {
-    const response = await fetch(`/api/rewards/${rewardId}/redeem`, { method: 'POST', credentials: 'include' })
+    const response = await apiFetch(`/rewards/${rewardId}/redeem`, { method: 'POST' })
     const body = await response.json().catch(() => ({}))
     if (!response.ok) return setStampMessage(body.error?.message || 'Unable to redeem this reward.')
     setStampMessage('Reward redeemed. Your next loyalty cycle has started.')
@@ -998,7 +998,7 @@ export function CustomerRegistration() {
     setStamping(true)
     setStampMessage('')
     try {
-      const response = await fetch('/api/stamps', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ qrToken }) })
+      const response = await apiFetch('/stamps', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ qrToken }) })
       const body = await response.json().catch(() => ({}))
       if (response.status === 409) {
         setStampMessage("Today's stamp is already collected.")
@@ -1045,7 +1045,7 @@ function InsightsPanel() {
   const [period, setPeriod] = useState('30d')
 
   useEffect(() => {
-    fetch(`/api/dashboard?period=${period}`, { credentials: 'include' }).then(async (response) => {
+    apiFetch(`/dashboard?period=${period}`).then(async (response) => {
       const body = await response.json()
       if (!response.ok) throw new Error(body.error?.message || 'Unable to load insights.')
       setInsights(body.data)
@@ -1067,7 +1067,7 @@ function CustomersPanel() {
 
   useEffect(() => {
     const query = new URLSearchParams({ search, filter, page, limit: 10 })
-    fetch(`/api/customers?${query}`, { credentials: 'include' }).then(async (response) => {
+    apiFetch(`/customers?${query}`).then(async (response) => {
       const body = await response.json()
       if (!response.ok) throw new Error(body.error?.message || 'Unable to load customers.')
       setCustomers(body.data.customers); setPagination(body.data.pagination)
@@ -1092,7 +1092,7 @@ function SettingsPanel({ section }) {
 
   useEffect(() => {
     const path = section === 'business' ? '/business' : section === 'loyalty' ? '/loyalty-program' : '/reward-settings'
-    fetch(`/api${path}`, { credentials: 'include' }).then((response) => response.json()).then((body) => {
+    apiFetch(path).then((response) => response.json()).then((body) => {
       const value = body.data?.business || body.data?.program || body.data?.reward
       if (value) {
         const nextForm = section === 'business' ? { name: value.name || '', logo: value.logo || '', address: { ...emptyBusiness.address, ...(value.address || {}) }, phone: value.phone || '', whatsappNumber: value.whatsappNumber || '', googleReviewUrl: value.googleReviewUrl || '', socialLinks: { ...emptyBusiness.socialLinks, ...(value.socialLinks || {}) } } : section === 'loyalty' ? { active: value.active, stampsRequired: value.stampsRequired } : { description: value.description, status: value.status }
@@ -1112,7 +1112,7 @@ function SettingsPanel({ section }) {
     setSaving(true); setError(''); setMessage('')
     const path = section === 'business' ? '/business' : section === 'loyalty' ? '/loyalty-program' : '/reward-settings'
     try {
-      const response = await fetch(`/api${path}`, { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) })
+      const response = await apiFetch(path, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) })
       const body = await response.json()
       if (!response.ok) throw new Error(body.error?.message || 'Unable to save settings.')
       setMessage('Changes saved'); setSavedForm(form)
@@ -1148,7 +1148,7 @@ function QrPanel() {
   async function generate() {
     setLoading(true); setError('')
     try {
-      const response = await fetch('/api/qr/sessions', { method: 'POST', credentials: 'include' })
+      const response = await apiFetch('/qr/sessions', { method: 'POST' })
       const body = await response.json()
       if (!response.ok) throw new Error(body.error?.message || 'Unable to create QR code.')
       setSession(body.data.session)
