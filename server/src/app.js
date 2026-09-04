@@ -16,6 +16,7 @@ import customerRegistrationsRouter from './routes/customerRegistrations.js'
 import { errorHandler } from './middleware/errorHandler.js'
 
 const app = express()
+app.set("trust proxy", 1);
 
 const allowedOrigin = process.env.FRONTEND_ORIGIN || 'http://localhost:5173'
 
