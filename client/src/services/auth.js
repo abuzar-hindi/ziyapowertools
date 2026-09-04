@@ -4,9 +4,9 @@ async function request(path, options = {}) {
   let response
   try {
     response = await fetch(`${apiBaseUrl}${path}`, {
-      credentials: 'include',
       headers: { 'Content-Type': 'application/json', ...options.headers },
       ...options,
+      credentials: 'include',
     })
   } catch {
     throw new Error('Unable to reach the server. Check that the API is running.')

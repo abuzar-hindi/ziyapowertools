@@ -43,7 +43,7 @@ export function currentAdmin(request, response) {
 }
 
 export function logout(_request, response) {
-  return response.clearCookie(ACCESS_TOKEN_COOKIE, { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/' })
+  return response.clearCookie(ACCESS_TOKEN_COOKIE, authCookieOptions())
     .json({ data: { loggedOut: true } })
 }
 

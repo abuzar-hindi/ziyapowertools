@@ -11,7 +11,7 @@ export function apiFetch(path, options = {}) {
   }
 
   return fetch(`${apiBaseUrl}${normalizedPath}`, {
-    credentials: 'include',
     ...options,
+    credentials: 'include',
   })
 }

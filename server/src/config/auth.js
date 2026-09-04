@@ -37,8 +37,8 @@ export function verifyAccessToken(token) {
 export function authCookieOptions() {
   return {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    secure: true,
+    sameSite: 'none',
     maxAge: 8 * 60 * 60 * 1000,
     path: '/',
   }
