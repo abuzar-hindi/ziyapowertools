@@ -773,22 +773,30 @@ function CustomerExperience() {
   if (!identified) return <main className="customer-app customer-centered"><div className="identity-card"><div className="brand-lockup"><span className="brand-mark">✦</span><span>DigiStamp</span></div><span className="eyebrow">{business.name}</span><h1>Your visits, your rewards.</h1><p>Tell us who you are to start your digital loyalty card.</p><form onSubmit={identify}><label>Name<input required maxLength="120" value={name} onChange={(event) => setName(event.target.value)} /></label><label>Phone number<input required type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} /></label>{error && <p role="alert" className="form-error">{error}</p>}<button type="submit" className="primary-action" disabled={saving || !online}>{saving ? 'Setting up your card...' : 'Start collecting'}<b>→</b></button></form></div></main>
 
 
-  const required = progress?.required || 6
+  const requiredProgramStamps = progress?.required || 6
   const current = progress?.current || 0
   const unlocked = rewards.filter((reward) => reward.status === 'unlocked')
   const locked = rewards.filter((reward) => reward.status !== 'unlocked' && reward.status !== 'redeemed')
   const redeemed = rewards.filter((reward) => reward.status === 'redeemed')
+
+  const activeRewards = rewards.filter((reward) => reward.status !== 'inactive' && reward.status !== 'archived')
+  const activeMilestones = activeRewards
+    .map((r) => r.milestoneStamps)
+    .filter((m) => typeof m === 'number' && m > 0)
+
+  const milestoneSet = new Set(activeMilestones)
+  if (milestoneSet.size === 0 && requiredProgramStamps) {
+    milestoneSet.add(requiredProgramStamps)
+  }
+
+  const maxRewardMilestone = activeMilestones.length ? Math.max(...activeMilestones) : 0
+  const required = Math.max(requiredProgramStamps, maxRewardMilestone)
+
   const stampSlots = Array.from({ length: required }, (_, index) => index)
   const stampActionLocked = stampRequest?.status === 'pending' || stampRequest?.status === 'approved' || current >= required
 
-  const milestoneSet = new Set(
-    rewards
-      .map((r) => r.milestoneStamps || r.stampsRequired)
-      .filter(Boolean)
-  )
-  if (milestoneSet.size === 0) {
-    milestoneSet.add(required)
-  }
+  const nextMilestone = activeMilestones.sort((a, b) => a - b).find((m) => m > current) || required
+  const stampsToGo = Math.max(nextMilestone - current, 0)
 
   const linkItems = [
     ['instagram', '◎', business.socialLinks?.instagram], ['facebook', 'f', business.socialLinks?.facebook],
@@ -828,7 +836,7 @@ function CustomerExperience() {
           <div className="business-status"><strong className={business.shopStatus?.status === 'open' ? 'open' : 'closed'}>{business.shopStatus?.status === 'open' ? '● Open now' : '● Closed'}</strong><span>{business.shopStatus?.detail || 'Hours unavailable'}</span></div>
         </div>
         {featuredPhoto && <img className="featured-business-photo" src={featuredPhoto} alt={`${business.name} featured`} />}
-        <div className="welcome-copy"><h1>{greeting}</h1><p>{stampRequest?.status === 'pending' ? 'Your stamp request is waiting for the team.' : stampRequest?.status === 'rejected' ? 'Your last request was declined. You can try again today.' : stampRequest?.status === 'approved' ? 'Today\'s stamp is confirmed.' : current >= required ? 'Your reward is ready to enjoy.' : current ? `${required - current} more ${required - current === 1 ? 'visit' : 'visits'} to unlock your reward.` : 'Your next little treat starts here.'}</p></div>
+        <div className="welcome-copy"><h1>{greeting}</h1><p>{stampRequest?.status === 'pending' ? 'Your stamp request is waiting for the team.' : stampRequest?.status === 'rejected' ? 'Your last request was declined. You can try again today.' : stampRequest?.status === 'approved' ? 'Today\'s stamp is confirmed.' : current >= required ? 'Your reward is ready to enjoy.' : current ? `${stampsToGo} more ${stampsToGo === 1 ? 'visit' : 'visits'} to unlock your reward.` : 'Your next little treat starts here.'}</p></div>
         <div className="loyalty-card">
           <div className="card-glow" />
           <div className="card-header"><span>VISIT CLUB</span><span>{current}/{required} visits</span></div>
@@ -837,7 +845,7 @@ function CustomerExperience() {
               {stampSlots.map((index) => {
                 const pos = index + 1
                 const isCollected = pos <= current
-                const isMilestone = milestoneSet.has(pos) || pos === required
+                const isMilestone = milestoneSet.has(pos)
                 let slotClass = `stamp-slot`
                 if (isCollected) slotClass += ` collected`
                 if (isMilestone) {
@@ -860,7 +868,7 @@ function CustomerExperience() {
         </div>
         <button type="button" className="primary-action" onClick={() => { if (stampRequest?.status === 'pending') setMessage('Today\'s stamp is already requested.'); else if (stampRequest?.status === 'approved') setMessage("Today's stamp is already collected. You can collect another stamp tomorrow."); else collectStamp() }} disabled={stamping || !online || stampActionLocked}><span>{stamping ? 'Requesting...' : stampRequest?.status === 'pending' ? 'Stamp pending' : stampRequest?.status === 'approved' ? 'Stamp collected today' : current >= required ? 'Reward ready' : 'Collect Today\'s Stamp'}</span><b>→</b></button>
         {message && <p role="status" className="celebration">{message}</p>}
-        <div className="next-reward"><div className="gift-icon">🎁</div><div><span className="eyebrow">{unlocked.length ? 'Your reward' : 'Next reward'}</span><strong>{unlocked.length ? unlocked[0].description : `${Math.max(required - current, 0)} more to go`}</strong></div><span className="chevron">›</span></div>
+        <div className="next-reward"><div className="gift-icon">🎁</div><div><span className="eyebrow">{unlocked.length ? 'Your reward' : 'Next reward'}</span><strong>{unlocked.length ? unlocked[0].description : `${stampsToGo} more to go`}</strong></div><span className="chevron">›</span></div>
         <ContactRow items={linkItems} /><div className="business-footer">{business.address?.line1 && <span>{business.address.line1}{business.address.city ? `, ${business.address.city}` : ''}</span>}{business.phone && <span>{business.phone}</span>}<span>{business.shopStatus?.timezone ? `Hours · ${business.shopStatus.timezone}` : 'Business hours available above'}</span></div>
       </section>}
       {screen === 'rewards' && <section className="customer-screen"><ScreenHeading eyebrow="YOUR PERKS" title="Rewards" subtitle="Little moments worth coming back for." /><div className="progress-strip"><div><span>Current progress</span><strong>{current} <small>/ {required} visits</small></strong></div><div className="mini-progress">{stampSlots.slice(0, 12).map((index) => <i className={index < current ? 'filled' : ''} key={index} />)}</div></div><div className="section-label">Your rewards</div>{unlocked.map((reward) => <RewardCard key={reward._id} reward={reward} onRedeem={redeem} />)}{locked.length === 0 && unlocked.length === 0 && <div className="mystery-card"><span>🎁</span><div><strong>Something lovely is waiting</strong><p>Keep collecting to reveal it.</p></div><b>?</b></div>}{locked.map((reward) => <RewardCard key={reward._id} reward={reward} />)}{redeemed.map((reward) => <RewardCard key={reward._id} reward={reward} />)}</section>}

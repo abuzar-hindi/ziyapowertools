@@ -76,10 +76,40 @@ export async function redeemReward(request, response, next) {
 
 export async function getCustomerRewards(request, response, next) {
   try {
-    const rewards = await CustomerReward.find({ businessId: request.customer.businessId, customerId: request.customer.id }).sort({ unlockedAt: -1 }).lean()
-    const rewardIds = rewards.map((reward) => reward.rewardId)
-    const definitions = new Map((await Reward.find({ businessId: request.customer.businessId, _id: { $in: rewardIds } }).select('description milestoneStamps').lean()).map((reward) => [reward._id.toString(), reward]))
-    return response.json({ data: { rewards: rewards.map((reward) => ({ ...reward, description: definitions.get(reward.rewardId.toString())?.description || null, milestoneStamps: definitions.get(reward.rewardId.toString())?.milestoneStamps || null })) } })
+    const activeRewards = await Reward.find({ businessId: request.customer.businessId, status: 'active' }).sort({ milestoneStamps: 1, createdAt: 1 }).lean()
+    const customerRewards = await CustomerReward.find({ businessId: request.customer.businessId, customerId: request.customer.id }).sort({ unlockedAt: -1 }).lean()
+    const customerRewardMap = new Map()
+    for (const cr of customerRewards) {
+      if (!customerRewardMap.has(cr.rewardId.toString())) {
+        customerRewardMap.set(cr.rewardId.toString(), cr)
+      }
+    }
+
+    const rewards = activeRewards.map((ar) => {
+      const cr = customerRewardMap.get(ar._id.toString())
+      return {
+        _id: cr?._id || ar._id,
+        rewardId: ar._id,
+        description: ar.description,
+        milestoneStamps: ar.milestoneStamps,
+        status: cr?.status || 'locked',
+        unlockedAt: cr?.unlockedAt,
+        redeemedAt: cr?.redeemedAt,
+      }
+    })
+
+    for (const cr of customerRewards) {
+      if (!rewards.some((r) => r.rewardId?.toString() === cr.rewardId.toString())) {
+        const def = await Reward.findById(cr.rewardId).select('description milestoneStamps').lean()
+        rewards.push({
+          ...cr,
+          description: def?.description || null,
+          milestoneStamps: def?.milestoneStamps || null,
+        })
+      }
+    }
+
+    return response.json({ data: { rewards } })
   } catch (error) {
     return next(error)
   }
